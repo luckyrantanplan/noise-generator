@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { DEFAULT_GRID } from "../field/grid.js";
 import { generateVectorField } from "../field/composeField.js";
 import { parseParameters } from "../shared/params.js";
+import type { ParameterValues, RenderOptions } from "../shared/types.js";
 import { DEFAULT_RENDER_OPTIONS, renderFieldSvg } from "./renderSvg.js";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -66,7 +67,7 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
     const parameters = parseParameters(requestUrl.searchParams);
     const field = generateVectorField(parameters, DEFAULT_GRID);
-    const svg = renderFieldSvg(field, DEFAULT_RENDER_OPTIONS);
+    const svg = renderFieldSvg(field, createRenderOptions(parameters));
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "no-store",
@@ -77,6 +78,15 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
       error instanceof Error ? error.message : "Unknown render error";
     sendText(response, 500, message);
   }
+}
+
+function createRenderOptions(parameters: ParameterValues): RenderOptions {
+  return {
+    ...DEFAULT_RENDER_OPTIONS,
+    showHeatmap: parameters.showHeatmap,
+    vectorOverlayDensity: parameters.vectorOverlayDensity,
+    heatmapCellSize: parameters.heatmapCellSize,
+  };
 }
 
 async function serveFile(

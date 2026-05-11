@@ -1,6 +1,10 @@
 import type { ParameterValues } from "./types.js";
 
-export type NumericParameterKey = Exclude<keyof ParameterValues, "randomSeed">;
+export type NumericParameterKey = Exclude<
+  keyof ParameterValues,
+  "randomSeed" | "showHeatmap"
+>;
+export type BooleanParameterKey = Extract<keyof ParameterValues, "showHeatmap">;
 
 export interface NumericParameterDefinition {
   key: NumericParameterKey;
@@ -16,14 +20,23 @@ export interface SeedParameterDefinition {
   label: string;
 }
 
+export interface BooleanParameterDefinition {
+  key: BooleanParameterKey;
+  label: string;
+}
+
 export type ParameterDefinition =
   | NumericParameterDefinition
+  | BooleanParameterDefinition
   | SeedParameterDefinition;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   force: 26,
   magnitudeScale: 28,
   directionScale: 18,
+  showHeatmap: true,
+  vectorOverlayDensity: 16,
+  heatmapCellSize: 1,
   octaves: 4,
   persistence: 0.55,
   lacunarity: 2,
@@ -56,6 +69,23 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     max: 80,
     step: 1,
     integer: false,
+  },
+  { key: "showHeatmap", label: "Show Heatmap" },
+  {
+    key: "vectorOverlayDensity",
+    label: "Vector Overlay Density",
+    min: 1,
+    max: 64,
+    step: 1,
+    integer: true,
+  },
+  {
+    key: "heatmapCellSize",
+    label: "Heatmap Cell Size",
+    min: 1,
+    max: 16,
+    step: 1,
+    integer: true,
   },
   { key: "octaves", label: "Octaves", min: 1, max: 8, step: 1, integer: true },
   {
@@ -165,6 +195,11 @@ export function parseParameters(
       continue;
     }
 
+    if (definition.key === "showHeatmap") {
+      parsedValues.showHeatmap = parseBooleanValue(suppliedValue);
+      continue;
+    }
+
     parsedValues[definition.key] = parseNumericValue(suppliedValue, definition);
   }
 
@@ -200,6 +235,16 @@ function parseNumericValue(
     ? Math.round(finiteNumber)
     : finiteNumber;
   return clamp(roundedNumber, definition.min, definition.max);
+}
+
+function parseBooleanValue(suppliedValue: string): boolean {
+  const normalizedValue = suppliedValue.trim().toLowerCase();
+  return !(
+    normalizedValue === "false" ||
+    normalizedValue === "0" ||
+    normalizedValue === "off" ||
+    normalizedValue === "no"
+  );
 }
 
 function sanitizeSeed(seed: string): string {

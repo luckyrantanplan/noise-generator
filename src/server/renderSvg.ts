@@ -4,7 +4,9 @@ import { indexAt, normalizedCoordinate } from "../field/grid.js";
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   width: 960,
   height: 720,
-  arrowStep: 4,
+  showHeatmap: true,
+  vectorOverlayDensity: 16,
+  heatmapCellSize: 1,
 };
 
 interface ColorStop {
@@ -28,15 +30,14 @@ export function renderFieldSvg(
   const cellWidth = options.width / field.grid.width;
   const cellHeight = options.height / field.grid.height;
   const maximumMagnitude = Math.max(...field.magnitude, Number.EPSILON);
-  const heatmap = renderHeatmap(
-    field,
-    options,
-    cellWidth,
-    cellHeight,
-    maximumMagnitude,
-  );
+  const heatmap = options.showHeatmap
+    ? renderHeatmap(field, options, cellWidth, cellHeight, maximumMagnitude)
+    : "";
   const arrows = renderArrows(field, options, maximumMagnitude);
   const swirls = renderSwirlCenters(field, options);
+  const heatmapLayer = options.showHeatmap
+    ? `<g shape-rendering="crispEdges">${heatmap}</g>`
+    : "";
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(options.width)}" height="${formatNumber(options.height)}" viewBox="0 0 ${formatNumber(options.width)} ${formatNumber(options.height)}" role="img" aria-label="Generated displacement field">
 <defs>
@@ -45,8 +46,8 @@ export function renderFieldSvg(
 </marker>
 </defs>
 <rect width="100%" height="100%" fill="#020617" />
-<g shape-rendering="crispEdges">${heatmap}</g>
-<g stroke="#f8fafc" stroke-width="1.4" stroke-linecap="round" marker-end="url(#arrowhead)" opacity="0.84">${arrows}</g>
+${heatmapLayer}
+<g stroke="#f8fafc" stroke-width="1" stroke-linecap="round" marker-end="url(#arrowhead)" opacity="0.84">${arrows}</g>
 <g fill="none" stroke="#e2e8f0" stroke-width="1" opacity="0.45">${swirls}</g>
 </svg>`;
 }
@@ -59,20 +60,37 @@ function renderHeatmap(
   maximumMagnitude: number,
 ): string {
   const fragments: string[] = [];
-  for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
+  for (
+    let rowIndex = 0;
+    rowIndex < field.grid.height;
+    rowIndex += options.heatmapCellSize
+  ) {
+    const blockHeight = Math.min(
+      options.heatmapCellSize,
+      field.grid.height - rowIndex,
+    );
     for (
       let columnIndex = 0;
       columnIndex < field.grid.width;
-      columnIndex += 1
+      columnIndex += options.heatmapCellSize
     ) {
-      const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
-      const normalizedMagnitude =
-        field.magnitude[scalarIndex] / maximumMagnitude;
+      const blockWidth = Math.min(
+        options.heatmapCellSize,
+        field.grid.width - columnIndex,
+      );
+      const normalizedMagnitude = averageBlockMagnitude(
+        field,
+        columnIndex,
+        rowIndex,
+        blockWidth,
+        blockHeight,
+        maximumMagnitude,
+      );
       const color = colorAt(normalizedMagnitude);
       const positionX = columnIndex * cellWidth;
       const positionY = rowIndex * cellHeight;
       fragments.push(
-        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(cellWidth + 0.4)}" height="${formatNumber(cellHeight + 0.4)}" fill="${color}" />`,
+        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(blockWidth * cellWidth + 0.4)}" height="${formatNumber(blockHeight * cellHeight + 0.4)}" fill="${color}" />`,
       );
     }
   }
@@ -86,15 +104,16 @@ function renderArrows(
 ): string {
   const fragments: string[] = [];
   const arrowScale = Math.min(options.width, options.height) * 0.038;
+  const arrowStep = densityToArrowStep(options.vectorOverlayDensity, field);
   for (
     let rowIndex = 0;
     rowIndex < field.grid.height;
-    rowIndex += options.arrowStep
+    rowIndex += arrowStep
   ) {
     for (
       let columnIndex = 0;
       columnIndex < field.grid.width;
-      columnIndex += options.arrowStep
+      columnIndex += arrowStep
     ) {
       const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
       const centerX =
@@ -112,6 +131,39 @@ function renderArrows(
     }
   }
   return fragments.join("");
+}
+
+function averageBlockMagnitude(
+  field: VectorField,
+  startColumn: number,
+  startRow: number,
+  blockWidth: number,
+  blockHeight: number,
+  maximumMagnitude: number,
+): number {
+  let magnitudeTotal = 0;
+  const cellCount = blockWidth * blockHeight;
+
+  for (let rowOffset = 0; rowOffset < blockHeight; rowOffset += 1) {
+    for (let columnOffset = 0; columnOffset < blockWidth; columnOffset += 1) {
+      const scalarIndex = indexAt(
+        startColumn + columnOffset,
+        startRow + rowOffset,
+        field.grid,
+      );
+      magnitudeTotal += field.magnitude[scalarIndex];
+    }
+  }
+
+  return magnitudeTotal / cellCount / maximumMagnitude;
+}
+
+function densityToArrowStep(
+  vectorOverlayDensity: number,
+  field: VectorField,
+): number {
+  const shortestSide = Math.min(field.grid.width, field.grid.height);
+  return Math.max(1, Math.round(shortestSide / vectorOverlayDensity));
 }
 
 function renderSwirlCenters(

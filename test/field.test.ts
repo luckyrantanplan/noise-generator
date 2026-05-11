@@ -93,6 +93,9 @@ void test("poisson sampler respects minimum spacing", () => {
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
   const searchParams = new URLSearchParams({
     force: "999",
+    showHeatmap: "false",
+    vectorOverlayDensity: "999",
+    heatmapCellSize: "0",
     octaves: "3.8",
     amplitudeMin: "0.9",
     amplitudeMax: "0.2",
@@ -102,6 +105,9 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   const parsedParameters = parseParameters(searchParams);
 
   assert.equal(parsedParameters.force, 80);
+  assert.equal(parsedParameters.showHeatmap, false);
+  assert.equal(parsedParameters.vectorOverlayDensity, 64);
+  assert.equal(parsedParameters.heatmapCellSize, 1);
   assert.equal(parsedParameters.octaves, 4);
   assert.equal(parsedParameters.amplitudeMin, 0.2);
   assert.equal(parsedParameters.amplitudeMax, 0.9);

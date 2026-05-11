@@ -2,6 +2,7 @@ import {
   DEFAULT_PARAMETERS,
   PARAMETER_DEFINITIONS,
   serializeParameters,
+  type BooleanParameterDefinition,
   type NumericParameterDefinition,
 } from "../shared/params.js";
 import type { ParameterValues } from "../shared/types.js";
@@ -39,8 +40,37 @@ function buildControls(
       form.appendChild(createSeedControl(parameters));
       continue;
     }
+    if (definition.key === "showHeatmap") {
+      form.appendChild(createBooleanControl(definition, parameters));
+      continue;
+    }
     form.appendChild(createNumericControl(definition, parameters));
   }
+}
+
+function createBooleanControl(
+  definition: BooleanParameterDefinition,
+  parameters: ParameterValues,
+): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "control";
+
+  const label = document.createElement("label");
+  label.htmlFor = definition.key;
+  label.textContent = definition.label;
+
+  const input = document.createElement("input");
+  input.id = definition.key;
+  input.name = definition.key;
+  input.type = "checkbox";
+  input.checked = parameters[definition.key];
+  input.addEventListener("input", () => {
+    parameters[definition.key] = input.checked;
+    queuePreviewRefresh(parameters);
+  });
+
+  wrapper.append(label, input);
+  return wrapper;
 }
 
 function createSeedControl(parameters: ParameterValues): HTMLElement {

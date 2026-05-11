@@ -2,6 +2,9 @@ export interface ParameterValues {
   force: number;
   magnitudeScale: number;
   directionScale: number;
+  showHeatmap: boolean;
+  vectorOverlayDensity: number;
+  heatmapCellSize: number;
   octaves: number;
   persistence: number;
   lacunarity: number;
@@ -48,5 +51,7 @@ export interface VectorField {
 export interface RenderOptions {
   width: number;
   height: number;
-  arrowStep: number;
+  showHeatmap: boolean;
+  vectorOverlayDensity: number;
+  heatmapCellSize: number;
 }
