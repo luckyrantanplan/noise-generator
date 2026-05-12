@@ -3,7 +3,11 @@ import type {
   ParameterValues,
   SwirlCenter,
 } from "../shared/types.js";
-import { indexAt, normalizedCoordinate } from "./grid.js";
+import {
+  indexAt,
+  normalizedCoordinate,
+  shortSideMetricScales,
+} from "./grid.js";
 
 export interface SwirlInfluenceField {
   vectorX: Float32Array;
@@ -16,6 +20,7 @@ export function evaluateSwirlInfluence(
   swirls: SwirlCenter[],
   parameters: ParameterValues,
 ): SwirlInfluenceField {
+  const metricScales = shortSideMetricScales(grid);
   const vectorX = new Float32Array(grid.width * grid.height);
   const vectorY = new Float32Array(grid.width * grid.height);
   const weight = new Float32Array(grid.width * grid.height);
@@ -31,6 +36,7 @@ export function evaluateSwirlInfluence(
         scalarIndex,
         swirls,
         parameters,
+        metricScales,
         vectorX,
         vectorY,
         weight,
@@ -47,14 +53,15 @@ function accumulateSwirlsAtPoint(
   scalarIndex: number,
   swirls: SwirlCenter[],
   parameters: ParameterValues,
+  metricScales: { xScale: number; yScale: number },
   vectorX: Float32Array,
   vectorY: Float32Array,
   weight: Float32Array,
 ): void {
   for (const swirl of swirls) {
-    const deltaX = positionX - swirl.positionX;
-    const deltaY = positionY - swirl.positionY;
-    const distance = Math.hypot(deltaX, deltaY);
+    const physicalDeltaX = (positionX - swirl.positionX) * metricScales.xScale;
+    const physicalDeltaY = (positionY - swirl.positionY) * metricScales.yScale;
+    const distance = Math.hypot(physicalDeltaX, physicalDeltaY);
     if (distance <= Number.EPSILON || distance > swirl.radius) {
       continue;
     }
@@ -63,7 +70,8 @@ function accumulateSwirlsAtPoint(
     const falloff = Math.pow(1 - normalizedDistance, parameters.swirlFalloff);
     const influence = falloff * parameters.swirlStrength;
     const tangentAngle =
-      Math.atan2(deltaY, deltaX) + swirl.direction * (Math.PI / 2);
+      Math.atan2(physicalDeltaY, physicalDeltaX) +
+      swirl.direction * (Math.PI / 2);
 
     vectorX[scalarIndex] += Math.cos(tangentAngle) * influence;
     vectorY[scalarIndex] += Math.sin(tangentAngle) * influence;

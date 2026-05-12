@@ -6,7 +6,6 @@ export function shapeAmplitudeField(
   parameters: ParameterValues,
 ): Float32Array {
   const outputValues = new Float32Array(normalizedField.values.length);
-  const amplitudeRange = Math.max(0, parameters.amplitudeMax);
 
   for (let index = 0; index < normalizedField.values.length; index += 1) {
     const normalizedValue = clamp(normalizedField.values[index], 0, 1);
@@ -14,7 +13,7 @@ export function shapeAmplitudeField(
       normalizedValue,
       parameters.amplitudeContrast,
     );
-    outputValues[index] = contrastedValue * amplitudeRange;
+    outputValues[index] = contrastedValue;
   }
 
   return outputValues;

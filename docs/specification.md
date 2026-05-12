@@ -58,8 +58,6 @@ Spectral Slope
 Controls spectral rolloff in dB per octave. Lower values preserve more high-frequency detail; higher values produce smoother, broader variation.
 Amplitude Contrast
 Shapes how concentrated or uniform the strong displacement regions are. High contrast produces more localized peaks.
-Amplitude Range
-Defines the minimum and maximum amplitude allowed after normalization and contrast shaping.
 Swirl Density
 Controls the expected number of swirl centers per unit area. Internally this is implemented through Poisson-disk sampling radius.
 Swirl Radius
@@ -91,6 +89,7 @@ Multiply by Force. 6. UI and visualization
 The HTML page should include:
 
 sliders or numeric inputs for all 15 parameters,
+a width and height control for the rendered SVG output,
 a seed input,
 a 2D canvas showing the generated vector field,
 a visual preview of the displacement field, such as:
@@ -99,6 +98,8 @@ a color-coded magnitude map,
 or a streamline / grid distortion preview.
 
 The interface should update interactively when a parameter changes.
+
+The application should also provide a binary export of the generated displacement field. The export must include the current configuration plus a row-major 2D displacement grid stored as interleaved `(dx, dy)` samples so a downstream processor can apply the field as `displace(p) = p + z`.
 
 7. Implementation notes
    Use TypeScript for all logic.

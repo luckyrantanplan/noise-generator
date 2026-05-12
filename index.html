@@ -57,6 +57,31 @@
         padding-right: 6px;
       }
 
+      .control-group {
+        display: grid;
+        gap: 4px;
+        padding: 14px 14px 4px;
+        border: 1px solid rgb(148 163 184 / 0.14);
+        border-radius: 10px;
+        background: rgb(15 23 42 / 0.42);
+      }
+
+      .control-group-title {
+        margin: 0;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #f8fafc;
+      }
+
+      .control-group-description {
+        margin: 0 0 2px;
+        font-size: 0.77rem;
+        line-height: 1.45;
+        color: #94a3b8;
+      }
+
       .control {
         display: grid;
         gap: 7px;
@@ -132,6 +157,26 @@
         font-size: 0.9rem;
       }
 
+      .toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .toolbar-button {
+        border: 1px solid rgb(34 197 94 / 0.35);
+        border-radius: 999px;
+        background: rgb(21 128 61 / 0.16);
+        color: #dcfce7;
+        padding: 7px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .toolbar-button:hover {
+        background: rgb(21 128 61 / 0.24);
+      }
+
       #preview {
         display: grid;
         place-items: center;
@@ -168,7 +213,21 @@
       <section class="preview-shell" aria-label="Generated displacement field">
         <div class="toolbar">
           <span>Magnitude heatmap with vector overlay</span>
-          <span id="status">Preparing</span>
+          <div class="toolbar-actions">
+            <input
+              id="import-binary-input"
+              type="file"
+              accept=".bin,application/octet-stream"
+              hidden
+            />
+            <button id="import-binary" class="toolbar-button" type="button">
+              Import binary
+            </button>
+            <button id="export-binary" class="toolbar-button" type="button">
+              Export binary
+            </button>
+            <span id="status">Preparing</span>
+          </div>
         </div>
         <div id="preview"></div>
       </section>

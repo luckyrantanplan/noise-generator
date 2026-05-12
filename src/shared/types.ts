@@ -1,4 +1,6 @@
 export interface ParameterValues {
+  renderWidth: number;
+  renderHeight: number;
   force: number;
   scale: number;
   gridSparseness: number;
@@ -6,7 +8,6 @@ export interface ParameterValues {
   vectorOverlayDensity: number;
   spectralSlopeDbPerOct: number;
   amplitudeContrast: number;
-  amplitudeMax: number;
   swirlDensity: number;
   swirlRadius: number;
   swirlStrength: number;
@@ -48,4 +49,19 @@ export interface RenderOptions {
   height: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;
+}
+
+export interface DisplacementBinaryMetadata {
+  parameters: ParameterValues;
+  grid: GridSpec;
+  renderWidth: number;
+  renderHeight: number;
+  sampleFormat: "f32-interleaved-dxdy";
+  ordering: "row-major";
+  displacementRule: "p_plus_z";
+}
+
+export interface DecodedDisplacementField {
+  metadata: DisplacementBinaryMetadata;
+  displacements: Float32Array;
 }

@@ -4,13 +4,6 @@ import { indexAt, normalizedCoordinate } from "../field/grid.js";
 
 const MAX_RENDER_MAGNITUDE = MAX_FORCE;
 
-export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
-  width: 960,
-  height: 720,
-  showHeatmap: true,
-  vectorOverlayDensity: 16,
-};
-
 interface ColorStop {
   value: number;
   red: number;

@@ -1,9 +1,12 @@
+import { decodeDisplacementField } from "../shared/displacementBinary.js";
 import {
   DEFAULT_PARAMETERS,
   PARAMETER_DEFINITIONS,
+  PARAMETER_GROUPS,
   serializeParameters,
   type BooleanParameterDefinition,
   type NumericParameterDefinition,
+  type ParameterDefinition,
   type SeedParameterDefinition,
 } from "../shared/params.js";
 import type { ParameterValues } from "../shared/types.js";
@@ -11,16 +14,31 @@ import type { ParameterValues } from "../shared/types.js";
 const controlsElement = requireElement("#controls");
 const previewElement = requireElement("#preview");
 const statusElement = requireElement("#status");
+const importButtonElement = requireElement("#import-binary");
+const importInputElement = requireElement("#import-binary-input");
+const exportButtonElement = requireElement("#export-binary");
 
 const currentParameters: ParameterValues = { ...DEFAULT_PARAMETERS };
 let pendingRequest = 0;
 
 buildControls(controlsElement, currentParameters);
+importButtonElement.addEventListener("click", () => {
+  importInputElement.click();
+});
+importInputElement.addEventListener("change", () => {
+  void importBinary(currentParameters);
+});
+exportButtonElement.addEventListener("click", () => {
+  void exportBinary(currentParameters);
+});
 void refreshPreview(currentParameters);
 
 function requireElement(selector: "#controls"): HTMLFormElement;
 function requireElement(selector: "#preview"): HTMLDivElement;
 function requireElement(selector: "#status"): HTMLSpanElement;
+function requireElement(selector: "#import-binary"): HTMLButtonElement;
+function requireElement(selector: "#import-binary-input"): HTMLInputElement;
+function requireElement(selector: "#export-binary"): HTMLButtonElement;
 function requireElement(selector: string): HTMLElement {
   const element = document.querySelector(selector);
   if (element === null) {
@@ -36,17 +54,68 @@ function buildControls(
   form: HTMLFormElement,
   parameters: ParameterValues,
 ): void {
-  for (const definition of PARAMETER_DEFINITIONS) {
-    if (definition.key === "randomSeed") {
-      form.appendChild(createSeedControl(definition, parameters));
+  const definitionsByGroup = groupParameterDefinitions(PARAMETER_DEFINITIONS);
+
+  for (const group of PARAMETER_GROUPS) {
+    const definitions = definitionsByGroup.get(group.key);
+    if (definitions === undefined) {
       continue;
     }
-    if (definition.key === "showHeatmap") {
-      form.appendChild(createBooleanControl(definition, parameters));
-      continue;
+
+    const section = document.createElement("section");
+    section.className = "control-group";
+
+    const heading = document.createElement("h2");
+    heading.className = "control-group-title";
+    heading.textContent = group.label;
+
+    const description = document.createElement("p");
+    description.className = "control-group-description";
+    description.textContent = group.description;
+
+    section.append(heading, description);
+
+    for (const definition of definitions) {
+      section.appendChild(createControl(definition, parameters));
     }
-    form.appendChild(createNumericControl(definition, parameters));
+
+    form.appendChild(section);
   }
+}
+
+function rebuildControls(parameters: ParameterValues): void {
+  controlsElement.replaceChildren();
+  buildControls(controlsElement, parameters);
+}
+
+function groupParameterDefinitions(
+  definitions: ParameterDefinition[],
+): Map<string, ParameterDefinition[]> {
+  const groupedDefinitions = new Map<string, ParameterDefinition[]>();
+
+  for (const definition of definitions) {
+    const existingGroup = groupedDefinitions.get(definition.group);
+    if (existingGroup === undefined) {
+      groupedDefinitions.set(definition.group, [definition]);
+      continue;
+    }
+    existingGroup.push(definition);
+  }
+
+  return groupedDefinitions;
+}
+
+function createControl(
+  definition: ParameterDefinition,
+  parameters: ParameterValues,
+): HTMLElement {
+  if (definition.key === "randomSeed") {
+    return createSeedControl(definition, parameters);
+  }
+  if (definition.key === "showHeatmap") {
+    return createBooleanControl(definition, parameters);
+  }
+  return createNumericControl(definition, parameters);
 }
 
 function createBooleanControl(
@@ -260,4 +329,61 @@ async function refreshPreview(parameters: ParameterValues): Promise<void> {
   }
   previewElement.innerHTML = await response.text();
   statusElement.textContent = "Ready";
+}
+
+async function exportBinary(parameters: ParameterValues): Promise<void> {
+  statusElement.textContent = "Exporting";
+  setToolbarBusy(true);
+
+  try {
+    const searchParams = serializeParameters(parameters);
+    const response = await fetch(`/api/field.bin?${searchParams.toString()}`);
+    if (!response.ok) {
+      statusElement.textContent = "Export failed";
+      return;
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = "displacement-field.bin";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(downloadUrl);
+    statusElement.textContent = "Ready";
+  } finally {
+    setToolbarBusy(false);
+  }
+}
+
+async function importBinary(parameters: ParameterValues): Promise<void> {
+  const file = importInputElement.files?.[0];
+  if (file === undefined) {
+    return;
+  }
+
+  statusElement.textContent = "Importing";
+  setToolbarBusy(true);
+
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const decodedField = decodeDisplacementField(bytes);
+    Object.assign(parameters, decodedField.metadata.parameters);
+    rebuildControls(parameters);
+    await refreshPreview(parameters);
+  } catch (error) {
+    statusElement.textContent = "Import failed";
+    previewElement.textContent =
+      error instanceof Error ? error.message : "Unknown import error";
+  } finally {
+    importInputElement.value = "";
+    setToolbarBusy(false);
+  }
+}
+
+function setToolbarBusy(isBusy: boolean): void {
+  importButtonElement.disabled = isBusy;
+  exportButtonElement.disabled = isBusy;
 }

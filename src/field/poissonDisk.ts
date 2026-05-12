@@ -1,6 +1,7 @@
 import { clamp } from "../shared/params.js";
-import type { SwirlCenter } from "../shared/types.js";
-import type { SeededRandom } from "./rng.js";
+import type { GridSpec, SwirlCenter } from "../shared/types.js";
+import { shortSideMetricScales } from "./grid.js";
+import type { SeededRandom } from "./hashSeed.js";
 
 interface Point {
   positionX: number;
@@ -8,6 +9,7 @@ interface Point {
 }
 
 interface PoissonOptions {
+  grid: GridSpec;
   density: number;
   radius: number;
   strength: number;
@@ -32,7 +34,7 @@ export function sampleSwirlCenters(
   }
 
   const minimumDistance = densityToPoissonRadius(options.density);
-  const points = samplePoissonDisk(minimumDistance, random);
+  const points = samplePoissonDisk(minimumDistance, options.grid, random);
   return points.map((point) => {
     const direction = random.next() < options.directionBias ? 1 : -1;
     return {
@@ -46,17 +48,28 @@ export function sampleSwirlCenters(
 
 function samplePoissonDisk(
   minimumDistance: number,
+  grid: GridSpec,
   random: SeededRandom,
 ): Point[] {
-  const cellSize = minimumDistance / Math.SQRT2;
-  const gridWidth = Math.max(1, Math.ceil(1 / cellSize));
-  const gridHeight = Math.max(1, Math.ceil(1 / cellSize));
+  const metricScales = shortSideMetricScales(grid);
+  const cellWidth = minimumDistance / Math.SQRT2 / metricScales.xScale;
+  const cellHeight = minimumDistance / Math.SQRT2 / metricScales.yScale;
+  const gridWidth = Math.max(1, Math.ceil(1 / cellWidth));
+  const gridHeight = Math.max(1, Math.ceil(1 / cellHeight));
   const occupancy = new Int32Array(gridWidth * gridHeight).fill(-1);
   const points: Point[] = [];
   const activePoints: Point[] = [];
 
   const initialPoint = { positionX: random.next(), positionY: random.next() };
-  addPoint(initialPoint, points, activePoints, occupancy, gridWidth, cellSize);
+  addPoint(
+    initialPoint,
+    points,
+    activePoints,
+    occupancy,
+    gridWidth,
+    cellWidth,
+    cellHeight,
+  );
 
   while (activePoints.length > 0) {
     const activeIndex = random.integer(0, activePoints.length - 1);
@@ -68,16 +81,23 @@ function samplePoissonDisk(
       attemptIndex < CANDIDATE_LIMIT;
       attemptIndex += 1
     ) {
-      const candidate = createCandidate(activePoint, minimumDistance, random);
+      const candidate = createCandidate(
+        activePoint,
+        minimumDistance,
+        metricScales,
+        random,
+      );
       if (
         isCandidateValid(
           candidate,
           minimumDistance,
+          metricScales,
           points,
           occupancy,
           gridWidth,
           gridHeight,
-          cellSize,
+          cellWidth,
+          cellHeight,
         )
       ) {
         addPoint(
@@ -86,7 +106,8 @@ function samplePoissonDisk(
           activePoints,
           occupancy,
           gridWidth,
-          cellSize,
+          cellWidth,
+          cellHeight,
         );
         acceptedCandidate = true;
         break;
@@ -104,24 +125,31 @@ function samplePoissonDisk(
 function createCandidate(
   activePoint: Point,
   minimumDistance: number,
+  metricScales: { xScale: number; yScale: number },
   random: SeededRandom,
 ): Point {
   const angle = random.between(0, Math.PI * 2);
   const distance = random.between(minimumDistance, minimumDistance * 2);
   return {
-    positionX: activePoint.positionX + Math.cos(angle) * distance,
-    positionY: activePoint.positionY + Math.sin(angle) * distance,
+    positionX:
+      activePoint.positionX +
+      (Math.cos(angle) * distance) / metricScales.xScale,
+    positionY:
+      activePoint.positionY +
+      (Math.sin(angle) * distance) / metricScales.yScale,
   };
 }
 
 function isCandidateValid(
   candidate: Point,
   minimumDistance: number,
+  metricScales: { xScale: number; yScale: number },
   points: Point[],
   occupancy: Int32Array,
   gridWidth: number,
   gridHeight: number,
-  cellSize: number,
+  cellWidth: number,
+  cellHeight: number,
 ): boolean {
   if (
     candidate.positionX < 0 ||
@@ -132,8 +160,8 @@ function isCandidateValid(
     return false;
   }
 
-  const gridColumn = Math.floor(candidate.positionX / cellSize);
-  const gridRow = Math.floor(candidate.positionY / cellSize);
+  const gridColumn = Math.floor(candidate.positionX / cellWidth);
+  const gridRow = Math.floor(candidate.positionY / cellHeight);
   const minimumDistanceSquared = minimumDistance * minimumDistance;
 
   for (let rowOffset = -2; rowOffset <= 2; rowOffset += 1) {
@@ -153,8 +181,10 @@ function isCandidateValid(
         continue;
       }
       const neighborPoint = points[pointIndex];
-      const deltaX = candidate.positionX - neighborPoint.positionX;
-      const deltaY = candidate.positionY - neighborPoint.positionY;
+      const deltaX =
+        (candidate.positionX - neighborPoint.positionX) * metricScales.xScale;
+      const deltaY =
+        (candidate.positionY - neighborPoint.positionY) * metricScales.yScale;
       if (deltaX * deltaX + deltaY * deltaY < minimumDistanceSquared) {
         return false;
       }
@@ -170,13 +200,14 @@ function addPoint(
   activePoints: Point[],
   occupancy: Int32Array,
   gridWidth: number,
-  cellSize: number,
+  cellWidth: number,
+  cellHeight: number,
 ): void {
   const pointIndex = points.length;
   points.push(point);
   activePoints.push(point);
-  const gridColumn = Math.floor(point.positionX / cellSize);
-  const gridRow = Math.floor(point.positionY / cellSize);
+  const gridColumn = Math.floor(point.positionX / cellWidth);
+  const gridRow = Math.floor(point.positionY / cellHeight);
   occupancy[gridRow * gridWidth + gridColumn] = pointIndex;
 }
 

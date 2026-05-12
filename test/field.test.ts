@@ -2,14 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { shapeAmplitudeField } from "../src/field/amplitude.js";
-import { DEFAULT_GRID, createGridFromSparseness } from "../src/field/grid.js";
+import {
+  DEFAULT_GRID,
+  createGridFromSparseness,
+  indexAt,
+  shortSideMetricScales,
+} from "../src/field/grid.js";
 import {
   densityToPoissonRadius,
   sampleSwirlCenters,
 } from "../src/field/poissonDisk.js";
-import { SeededRandom } from "../src/field/rng.js";
+import { SeededRandom } from "../src/field/hashSeed.js";
 import { evaluateSwirlInfluence } from "../src/field/swirls.js";
 import {
+  frequencyRadiusInLongestSideUnits,
   generateWhiteNoise,
   applySpectralFilter,
 } from "../src/field/spectralNoise.js";
@@ -49,14 +55,13 @@ void test("amplitude shaping remaps values into the configured range", () => {
   };
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    amplitudeMax: 0.8,
     amplitudeContrast: 1,
   };
 
   const shapedValues = shapeAmplitudeField(field, parameters);
 
   assert.ok(Math.abs(shapedValues[0] - 0) < 1e-6);
-  assert.ok(Math.abs(shapedValues[3] - 0.8) < 1e-6);
+  assert.ok(Math.abs(shapedValues[3] - 1) < 1e-6);
   assert.ok(shapedValues[1] > shapedValues[0]);
   assert.ok(shapedValues[2] < shapedValues[3]);
 });
@@ -71,8 +76,11 @@ void test("poisson radius decreases as requested swirl density increases", () =>
 void test("poisson sampler respects minimum spacing", () => {
   const density = 16;
   const minimumDistance = densityToPoissonRadius(density);
+  const grid = { width: 96, height: 48 };
+  const metricScales = shortSideMetricScales(grid);
   const centers = sampleSwirlCenters(
     {
+      grid,
       density,
       radius: 0.2,
       strength: 1,
@@ -90,8 +98,8 @@ void test("poisson sampler respects minimum spacing", () => {
       const firstCenter = centers[firstIndex];
       const secondCenter = centers[secondIndex];
       const distance = Math.hypot(
-        firstCenter.positionX - secondCenter.positionX,
-        firstCenter.positionY - secondCenter.positionY,
+        (firstCenter.positionX - secondCenter.positionX) * metricScales.xScale,
+        (firstCenter.positionY - secondCenter.positionY) * metricScales.yScale,
       );
       assert.ok(distance + 1e-7 >= minimumDistance);
     }
@@ -101,6 +109,7 @@ void test("poisson sampler respects minimum spacing", () => {
 void test("swirl direction bias controls clockwise versus counterclockwise ratio", () => {
   const lowBiasCenters = sampleSwirlCenters(
     {
+      grid: DEFAULT_GRID,
       density: 48,
       radius: 0.2,
       strength: 1,
@@ -110,6 +119,7 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
   );
   const balancedCenters = sampleSwirlCenters(
     {
+      grid: DEFAULT_GRID,
       density: 48,
       radius: 0.2,
       strength: 1,
@@ -119,6 +129,7 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
   );
   const highBiasCenters = sampleSwirlCenters(
     {
+      grid: DEFAULT_GRID,
       density: 48,
       radius: 0.2,
       strength: 1,
@@ -131,6 +142,14 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
   assert.ok(highBiasCenters.every((center) => center.direction === 1));
   assert.ok(balancedCenters.some((center) => center.direction === -1));
   assert.ok(balancedCenters.some((center) => center.direction === 1));
+});
+
+void test("spectral radius stays isotropic on rectangular grids", () => {
+  const grid = { width: 96, height: 48 };
+  const horizontalRadius = frequencyRadiusInLongestSideUnits(2, 0, grid);
+  const verticalRadius = frequencyRadiusInLongestSideUnits(0, 1, grid);
+
+  assert.ok(Math.abs(horizontalRadius - verticalRadius) < 1e-9);
 });
 
 void test("swirl influence remains tangential to the swirl radius", () => {
@@ -165,15 +184,45 @@ void test("swirl influence remains tangential to the swirl radius", () => {
   assert.ok(Math.abs(dotProduct) < 1e-6);
 });
 
+void test("swirl influence stays isotropic on rectangular grids", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    swirlStrength: 1,
+    swirlFalloff: 1,
+  };
+  const grid = { width: 33, height: 17 };
+  const field = evaluateSwirlInfluence(
+    grid,
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.3,
+        direction: 1,
+      },
+    ],
+    parameters,
+  );
+
+  const horizontalIndex = indexAt(17, 8, grid);
+  const verticalIndex = indexAt(16, 9, grid);
+
+  assert.ok(
+    Math.abs(field.weight[horizontalIndex] - field.weight[verticalIndex]) <
+      0.01,
+  );
+});
+
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
   const searchParams = new URLSearchParams({
+    renderWidth: "99999",
+    renderHeight: "0",
     force: "999",
     scale: "999",
     gridSparseness: "0",
     spectralSlopeDbPerOct: "999",
     showHeatmap: "false",
     vectorOverlayDensity: "999",
-    amplitudeMax: "0.2",
     swirlRadius: "999",
     swirlDirectionBias: "999",
     randomSeed: "  tuned-seed  ",
@@ -181,6 +230,8 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
 
   const parsedParameters = parseParameters(searchParams);
 
+  assert.equal(parsedParameters.renderWidth, 1920);
+  assert.equal(parsedParameters.renderHeight, 180);
   assert.equal(parsedParameters.force, MAX_FORCE);
   assert.equal(parsedParameters.scale, MAX_CUTOFF_PERCENT);
   assert.equal(parsedParameters.gridSparseness, 1);
@@ -190,7 +241,6 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   );
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 64);
-  assert.equal(parsedParameters.amplitudeMax, 0.2);
   assert.equal(parsedParameters.swirlRadius, MAX_SWIRL_RADIUS_PERCENT);
   assert.equal(parsedParameters.swirlDirectionBias, 1);
   assert.equal(parsedParameters.randomSeed, "tuned-seed");

@@ -6,7 +6,33 @@ export type NumericParameterKey = Exclude<
 >;
 export type BooleanParameterKey = Extract<keyof ParameterValues, "showHeatmap">;
 
+export const PARAMETER_GROUPS = [
+  {
+    key: "field",
+    label: "Field Shape",
+    description: "Primary controls for structure, magnitude, and base direction.",
+  },
+  {
+    key: "swirls",
+    label: "Swirls",
+    description: "Controls for vortex placement, footprint, and spin behavior.",
+  },
+  {
+    key: "display",
+    label: "Display",
+    description: "Controls for SVG resolution and visible overlays.",
+  },
+  {
+    key: "seed",
+    label: "Seed",
+    description: "Deterministic input used to reproduce the same field.",
+  },
+] as const;
+
+export type ParameterGroupKey = (typeof PARAMETER_GROUPS)[number]["key"];
+
 export interface NumericParameterDefinition {
+  group: ParameterGroupKey;
   key: NumericParameterKey;
   label: string;
   description: string;
@@ -17,12 +43,14 @@ export interface NumericParameterDefinition {
 }
 
 export interface SeedParameterDefinition {
+  group: ParameterGroupKey;
   key: "randomSeed";
   label: string;
   description: string;
 }
 
 export interface BooleanParameterDefinition {
+  group: ParameterGroupKey;
   key: BooleanParameterKey;
   label: string;
   description: string;
@@ -41,17 +69,18 @@ export const MIN_SWIRL_RADIUS_PERCENT = 3;
 export const MAX_SWIRL_RADIUS_PERCENT = 45;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
+  renderWidth: 960,
+  renderHeight: 720,
   force: 26,
   scale: 4.5,
   gridSparseness: 15,
   showHeatmap: true,
   vectorOverlayDensity: 16,
   spectralSlopeDbPerOct: 6,
-  amplitudeContrast: 1.4,
-  amplitudeMax: 1,
+  amplitudeContrast: 1,
   swirlDensity: 18,
   swirlRadius: 18,
-  swirlStrength: 1.4,
+  swirlStrength: 1,
   swirlFalloff: 2,
   swirlDirectionBias: 0.5,
   directionNoiseMix: 0.45,
@@ -60,6 +89,29 @@ export const DEFAULT_PARAMETERS: ParameterValues = {
 
 export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   {
+    group: "display",
+    key: "renderWidth",
+    label: "Render Width",
+    description:
+      "Sets the SVG output width in SVG units. This also affects the simulation grid size when combined with grid sparseness.",
+    min: 240,
+    max: 1920,
+    step: 10,
+    integer: true,
+  },
+  {
+    group: "display",
+    key: "renderHeight",
+    label: "Render Height",
+    description:
+      "Sets the SVG output height in SVG units. This also affects the simulation grid size when combined with grid sparseness.",
+    min: 180,
+    max: 1440,
+    step: 10,
+    integer: true,
+  },
+  {
+    group: "field",
     key: "force",
     label: "Force",
     description:
@@ -70,6 +122,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
+    group: "field",
     key: "scale",
     label: "Scale (%)",
     description:
@@ -80,32 +133,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
-    key: "gridSparseness",
-    label: "Grid Sparseness",
-    description:
-      "Sets the simulation cell size in SVG units. A value of 1 means one grid column per SVG unit; larger values make the field coarser with fewer columns and rows.",
-    min: 1,
-    max: 120,
-    step: 1,
-    integer: true,
-  },
-  {
-    key: "showHeatmap",
-    label: "Show Heatmap",
-    description:
-      "Toggles the colored magnitude heatmap. Disable it to render only vectors, swirl guides, and the scale bar.",
-  },
-  {
-    key: "vectorOverlayDensity",
-    label: "Vector Overlay Density",
-    description:
-      "Controls how many arrows are drawn over the field. Higher values sample the field more densely; lower values skip more cells.",
-    min: 1,
-    max: 64,
-    step: 1,
-    integer: true,
-  },
-  {
+    group: "field",
     key: "spectralSlopeDbPerOct",
     label: "Spectral Slope",
     description:
@@ -116,76 +144,18 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
+    group: "field",
     key: "amplitudeContrast",
     label: "Amplitude Contrast",
     description:
-      "Applies contrast to the normalized magnitude field before remapping it into the output range from 0 up to Amplitude Range Max. Higher values push more cells toward extremes.",
+      "Applies contrast to the normalized magnitude field before it is used as amplitude. Higher values push more cells toward extremes.",
     min: 0.25,
     max: 4,
     step: 0.05,
     integer: false,
   },
   {
-    key: "amplitudeMax",
-    label: "Amplitude Range Max",
-    description:
-      "Upper bound of the final displacement magnitude after shaping. Lower it to cap the strongest regions in the field while the minimum stays fixed at 0.",
-    min: 0,
-    max: 1,
-    step: 0.01,
-    integer: false,
-  },
-  {
-    key: "swirlDensity",
-    label: "Swirl Density",
-    description:
-      "Approximate density of circular swirl influences placed across the field. Higher values create more swirl centers.",
-    min: 0,
-    max: 80,
-    step: 1,
-    integer: false,
-  },
-  {
-    key: "swirlRadius",
-    label: "Swirl Radius (%)",
-    description:
-      "Radius of each swirl influence as a percentage of the shorter render side. Larger values make each swirl affect a wider area.",
-    min: MIN_SWIRL_RADIUS_PERCENT,
-    max: MAX_SWIRL_RADIUS_PERCENT,
-    step: 0.5,
-    integer: false,
-  },
-  {
-    key: "swirlStrength",
-    label: "Swirl Strength",
-    description:
-      "Strength of the swirl-induced rotation mixed into the direction field. Higher values bend the flow more strongly around swirl centers.",
-    min: 0,
-    max: 4,
-    step: 0.05,
-    integer: false,
-  },
-  {
-    key: "swirlFalloff",
-    label: "Swirl Falloff",
-    description:
-      "Controls how quickly each swirl influence fades with distance. Higher values keep the effect concentrated closer to the center.",
-    min: 0.3,
-    max: 5,
-    step: 0.05,
-    integer: false,
-  },
-  {
-    key: "swirlDirectionBias",
-    label: "Swirl Direction Bias",
-    description:
-      "Biases swirl spin direction. 0 favors clockwise swirls, 0.5 yields a balanced mix, and 1 favors counterclockwise swirls.",
-    min: 0,
-    max: 1,
-    step: 0.01,
-    integer: false,
-  },
-  {
+    group: "field",
     key: "directionNoiseMix",
     label: "Direction Noise Mix",
     description:
@@ -196,6 +166,91 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
+    group: "swirls",
+    key: "swirlDensity",
+    label: "Swirl Density",
+    description:
+      "Approximate density of circular swirl influences placed across the field. Higher values create more swirl centers.",
+    min: 0,
+    max: 80,
+    step: 1,
+    integer: false,
+  },
+  {
+    group: "swirls",
+    key: "swirlRadius",
+    label: "Swirl Radius (%)",
+    description:
+      "Radius of each swirl influence as a percentage of the shorter render side. Larger values make each swirl affect a wider area.",
+    min: MIN_SWIRL_RADIUS_PERCENT,
+    max: MAX_SWIRL_RADIUS_PERCENT,
+    step: 0.5,
+    integer: false,
+  },
+  {
+    group: "swirls",
+    key: "swirlStrength",
+    label: "Swirl Strength",
+    description:
+      "Strength of the swirl-induced rotation mixed into the direction field. Higher values bend the flow more strongly around swirl centers.",
+    min: 0,
+    max: 4,
+    step: 0.05,
+    integer: false,
+  },
+  {
+    group: "swirls",
+    key: "swirlFalloff",
+    label: "Swirl Falloff",
+    description:
+      "Controls how quickly each swirl influence fades with distance. Higher values keep the effect concentrated closer to the center.",
+    min: 0.3,
+    max: 5,
+    step: 0.05,
+    integer: false,
+  },
+  {
+    group: "swirls",
+    key: "swirlDirectionBias",
+    label: "Swirl Direction Bias",
+    description:
+      "Biases swirl spin direction. 0 favors clockwise swirls, 0.5 yields a balanced mix, and 1 favors counterclockwise swirls.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    integer: false,
+  },
+  {
+    group: "display",
+    key: "gridSparseness",
+    label: "Grid Sparseness",
+    description:
+      "Sets the simulation cell size in SVG units. A value of 1 means one grid column per SVG unit; larger values make the field coarser with fewer columns and rows.",
+    min: 1,
+    max: 120,
+    step: 1,
+    integer: true,
+  },
+  {
+    group: "display",
+    key: "vectorOverlayDensity",
+    label: "Vector Overlay Density",
+    description:
+      "Controls how many arrows are drawn over the field. Higher values sample the field more densely; lower values skip more cells.",
+    min: 1,
+    max: 64,
+    step: 1,
+    integer: true,
+  },
+  {
+    group: "display",
+    key: "showHeatmap",
+    label: "Show Heatmap",
+    description:
+      "Toggles the colored magnitude heatmap. Disable it to render only vectors, swirl guides, and the scale bar.",
+  },
+  {
+    group: "seed",
     key: "randomSeed",
     label: "Random Seed",
     description:

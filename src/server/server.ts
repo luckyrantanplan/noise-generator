@@ -13,7 +13,8 @@ import { createGridFromSparseness } from "../field/grid.js";
 import { generateVectorField } from "../field/composeField.js";
 import { parseParameters } from "../shared/params.js";
 import type { ParameterValues, RenderOptions } from "../shared/types.js";
-import { DEFAULT_RENDER_OPTIONS, renderFieldSvg } from "./renderSvg.js";
+import { encodeGeneratedDisplacementField } from "./exportBinary.js";
+import { renderFieldSvg } from "./renderSvg.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -50,6 +51,11 @@ async function routeRequest(
     return;
   }
 
+  if (requestUrl.pathname === "/api/field.bin") {
+    serveFieldBinary(requestUrl, response);
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/src/")) {
     const relativePath = requestUrl.pathname.slice(1);
     await serveFile(
@@ -65,14 +71,9 @@ async function routeRequest(
 
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
-    const parameters = parseParameters(requestUrl.searchParams);
-    const renderOptions = createRenderOptions(parameters);
-    const grid = createGridFromSparseness(
-      renderOptions.width,
-      renderOptions.height,
-      parameters.gridSparseness,
+    const { field, parameters, renderOptions } = generateFieldResponseData(
+      requestUrl,
     );
-    const field = generateVectorField(parameters, grid);
     const svg = renderFieldSvg(field, renderOptions);
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",
@@ -86,9 +87,45 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   }
 }
 
+function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
+  try {
+    const { field, parameters } = generateFieldResponseData(requestUrl);
+    const bytes = encodeGeneratedDisplacementField(parameters, field);
+    response.writeHead(200, {
+      "content-type": "application/octet-stream",
+      "content-disposition":
+        'attachment; filename="displacement-field.bin"',
+      "cache-control": "no-store",
+    });
+    response.end(bytes);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown export error";
+    sendText(response, 500, message);
+  }
+}
+
+function generateFieldResponseData(requestUrl: URL): {
+  field: ReturnType<typeof generateVectorField>;
+  parameters: ParameterValues;
+  renderOptions: RenderOptions;
+} {
+  const parameters = parseParameters(requestUrl.searchParams);
+  const renderOptions = createRenderOptions(parameters);
+  const grid = createGridFromSparseness(
+    renderOptions.width,
+    renderOptions.height,
+    parameters.gridSparseness,
+  );
+  const field = generateVectorField(parameters, grid);
+
+  return { field, parameters, renderOptions };
+}
+
 function createRenderOptions(parameters: ParameterValues): RenderOptions {
   return {
-    ...DEFAULT_RENDER_OPTIONS,
+    width: parameters.renderWidth,
+    height: parameters.renderHeight,
     showHeatmap: parameters.showHeatmap,
     vectorOverlayDensity: parameters.vectorOverlayDensity,
   };

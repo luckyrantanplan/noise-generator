@@ -1,7 +1,8 @@
 import WebFFT from "webfft";
 
 import type { GridSpec, ScalarField } from "../shared/types.js";
-import type { SeededRandom } from "./rng.js";
+import { shortSideMetricScales } from "./grid.js";
+import type { SeededRandom } from "./hashSeed.js";
 
 interface SpectralOptions {
   cutoffPercent: number;
@@ -121,13 +122,32 @@ function applyEnvelope(
     const frequencyY = signedFrequency(rowIndex, transformGrid.height);
     for (let columnIndex = 0; columnIndex < transformGrid.width; columnIndex += 1) {
       const frequencyX = signedFrequency(columnIndex, transformGrid.width);
-      const radius = Math.hypot(frequencyX, frequencyY);
+      const radius = frequencyRadiusInLongestSideUnits(
+        frequencyX,
+        frequencyY,
+        sourceGrid,
+      );
       const envelope = spectralEnvelope(radius, sourceGrid, options);
       const complexIndex = columnIndex * 2;
       rows[rowIndex][complexIndex] *= envelope;
       rows[rowIndex][complexIndex + 1] *= envelope;
     }
   }
+}
+
+export function frequencyRadiusInLongestSideUnits(
+  frequencyX: number,
+  frequencyY: number,
+  grid: GridSpec,
+): number {
+  const longestSide = Math.max(grid.width, grid.height);
+  const xScale = longestSide / grid.width;
+  const yScale = longestSide / grid.height;
+
+  return Math.hypot(
+    frequencyX * xScale,
+    frequencyY * yScale,
+  );
 }
 
 function spectralEnvelope(

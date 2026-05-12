@@ -7,7 +7,7 @@ import type {
 import { shapeAmplitudeField } from "./amplitude.js";
 import { DEFAULT_GRID, createGrid } from "./grid.js";
 import { sampleSwirlCenters } from "./poissonDisk.js";
-import { SeededRandom } from "./rng.js";
+import { SeededRandom } from "./hashSeed.js";
 import { generateWhiteNoise, applySpectralFilter } from "./spectralNoise.js";
 import { evaluateSwirlInfluence } from "./swirls.js";
 
@@ -38,6 +38,7 @@ export function generateVectorField(
   const amplitude = shapeAmplitudeField(filteredMagnitude, parameters);
   const swirls = sampleSwirlCenters(
     {
+      grid,
       density: parameters.swirlDensity,
       radius: parameters.swirlRadius / 100,
       strength: parameters.swirlStrength,

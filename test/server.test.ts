@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 
 import { createAppServer } from "../src/server/server.js";
+import { decodeDisplacementField } from "../src/shared/displacementBinary.js";
 
 void test("field endpoint returns generated SVG", async () => {
   const server = createAppServer();
@@ -48,6 +49,15 @@ void test("field endpoint returns generated SVG", async () => {
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&showHeatmap=false`,
     );
     const vectorOnlySvg = await vectorOnlyResponse.text();
+    const customSizeResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&renderWidth=640&renderHeight=480`,
+    );
+    const customSizeSvg = await customSizeResponse.text();
+    const binaryResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.bin?randomSeed=test-seed&renderWidth=640&renderHeight=480&gridSparseness=20`,
+    );
+    const binaryBytes = new Uint8Array(await binaryResponse.arrayBuffer());
+    const decodedBinary = decodeDisplacementField(binaryBytes);
 
     assert.equal(response.status, 200);
     assert.equal(sparseVectorResponse.status, 200);
@@ -58,7 +68,13 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(tightSwirlResponse.status, 200);
     assert.equal(broadSwirlResponse.status, 200);
     assert.equal(vectorOnlyResponse.status, 200);
+    assert.equal(customSizeResponse.status, 200);
+    assert.equal(binaryResponse.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /image\/svg\+xml/);
+    assert.match(
+      binaryResponse.headers.get("content-type") ?? "",
+      /application\/octet-stream/,
+    );
     assert.match(svg, /^<svg/);
     assert.match(svg, /<line/);
     assert.match(svg, /Scale \(SVG units\)/);
@@ -72,6 +88,15 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(countSvgTag(vectorOnlySvg, "line") > 0, true);
     assert.equal(countSvgTag(vectorOnlySvg, "rect"), 1);
     assert.match(vectorOnlySvg, /Scale \(SVG units\)/);
+    assert.match(customSizeSvg, /width="640"/);
+    assert.match(customSizeSvg, /height="480"/);
+    assert.match(customSizeSvg, /viewBox="0 0 640 480"/);
+    assert.equal(String.fromCharCode(...binaryBytes.slice(0, 4)), "DFLD");
+    assert.equal(decodedBinary.metadata.parameters.randomSeed, "test-seed");
+    assert.equal(decodedBinary.metadata.renderWidth, 640);
+    assert.equal(decodedBinary.metadata.renderHeight, 480);
+    assert.deepEqual(decodedBinary.metadata.grid, { width: 32, height: 24 });
+    assert.equal(decodedBinary.displacements.length, 32 * 24 * 2);
   } finally {
     await new Promise<void>((resolve) => {
       server.close(() => {

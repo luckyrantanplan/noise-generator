@@ -39,6 +39,16 @@ export function normalizedCoordinate(
   return cellIndex / (cellCount - 1);
 }
 
+export function shortSideMetricScales(
+  grid: GridSpec,
+): { xScale: number; yScale: number } {
+  const shortestSide = Math.min(grid.width, grid.height);
+  return {
+    xScale: grid.width / shortestSide,
+    yScale: grid.height / shortestSide,
+  };
+}
+
 function assertPositiveInteger(value: number, name: string): void {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive integer`);
