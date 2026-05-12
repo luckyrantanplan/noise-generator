@@ -1,12 +1,14 @@
+import { MAX_FORCE } from "../shared/params.js";
 import type { RenderOptions, VectorField } from "../shared/types.js";
 import { indexAt, normalizedCoordinate } from "../field/grid.js";
+
+const MAX_RENDER_MAGNITUDE = MAX_FORCE;
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   width: 960,
   height: 720,
   showHeatmap: true,
   vectorOverlayDensity: 16,
-  heatmapCellSize: 1,
 };
 
 interface ColorStop {
@@ -29,11 +31,10 @@ export function renderFieldSvg(
 ): string {
   const cellWidth = options.width / field.grid.width;
   const cellHeight = options.height / field.grid.height;
-  const maximumMagnitude = getMaximumMagnitude(field);
   const heatmap = options.showHeatmap
-    ? renderHeatmap(field, options, cellWidth, cellHeight, maximumMagnitude)
+    ? renderHeatmap(field, cellWidth, cellHeight)
     : "";
-  const arrows = renderArrows(field, options, maximumMagnitude);
+  const arrows = renderArrows(field, options);
   const swirls = renderSwirlCenters(field, options);
   const scaleBar = renderScaleBar(options);
   const heatmapLayer = options.showHeatmap
@@ -54,57 +55,20 @@ ${scaleBar}
 </svg>`;
 }
 
-function getMaximumMagnitude(field: VectorField): number {
-  let maximumMagnitude = Number.EPSILON;
-
-  for (const magnitude of field.magnitude) {
-    if (magnitude > maximumMagnitude) {
-      maximumMagnitude = magnitude;
-    }
-  }
-
-  return maximumMagnitude;
-}
-
 function renderHeatmap(
   field: VectorField,
-  options: RenderOptions,
   cellWidth: number,
   cellHeight: number,
-  maximumMagnitude: number,
 ): string {
   const fragments: string[] = [];
-  for (
-    let rowIndex = 0;
-    rowIndex < field.grid.height;
-    rowIndex += options.heatmapCellSize
-  ) {
-    const blockHeight = Math.min(
-      options.heatmapCellSize,
-      field.grid.height - rowIndex,
-    );
-    for (
-      let columnIndex = 0;
-      columnIndex < field.grid.width;
-      columnIndex += options.heatmapCellSize
-    ) {
-      const blockWidth = Math.min(
-        options.heatmapCellSize,
-        field.grid.width - columnIndex,
-      );
-      const normalizedMagnitude = averageBlockMagnitude(
-        field,
-        columnIndex,
-        rowIndex,
-        blockWidth,
-        blockHeight,
-        maximumMagnitude,
-      );
-      const color = colorAt(normalizedMagnitude);
+  for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < field.grid.width; columnIndex += 1) {
+      const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
+      const color = colorAt(displayMagnitudeRatio(field.magnitude[scalarIndex]));
       const positionX = columnIndex * cellWidth;
       const positionY = rowIndex * cellHeight;
       fragments.push(
-        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(blockWidth * cellWidth + 0.4)}" height="${formatNumber(blockHeight * cellHeight + 0.4)}" fill="${color}" />`,
+        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(cellWidth + 0.4)}" height="${formatNumber(cellHeight + 0.4)}" fill="${color}" />`,
       );
     }
   }
@@ -114,7 +78,6 @@ function renderHeatmap(
 function renderArrows(
   field: VectorField,
   options: RenderOptions,
-  maximumMagnitude: number,
 ): string {
   const fragments: string[] = [];
   const arrowScale = Math.min(options.width, options.height) * 0.038;
@@ -134,7 +97,7 @@ function renderArrows(
         normalizedCoordinate(columnIndex, field.grid.width) * options.width;
       const centerY =
         normalizedCoordinate(rowIndex, field.grid.height) * options.height;
-      const magnitudeRatio = field.magnitude[scalarIndex] / maximumMagnitude;
+      const magnitudeRatio = displayMagnitudeRatio(field.magnitude[scalarIndex]);
       const arrowLength = 6 + magnitudeRatio * arrowScale;
       const angle = field.direction[scalarIndex];
       const endX = centerX + Math.cos(angle) * arrowLength;
@@ -145,31 +108,6 @@ function renderArrows(
     }
   }
   return fragments.join("");
-}
-
-function averageBlockMagnitude(
-  field: VectorField,
-  startColumn: number,
-  startRow: number,
-  blockWidth: number,
-  blockHeight: number,
-  maximumMagnitude: number,
-): number {
-  let magnitudeTotal = 0;
-  const cellCount = blockWidth * blockHeight;
-
-  for (let rowOffset = 0; rowOffset < blockHeight; rowOffset += 1) {
-    for (let columnOffset = 0; columnOffset < blockWidth; columnOffset += 1) {
-      const scalarIndex = indexAt(
-        startColumn + columnOffset,
-        startRow + rowOffset,
-        field.grid,
-      );
-      magnitudeTotal += field.magnitude[scalarIndex];
-    }
-  }
-
-  return magnitudeTotal / cellCount / maximumMagnitude;
 }
 
 function densityToArrowStep(
@@ -243,6 +181,10 @@ function colorAt(value: number): string {
     startStop.blue + (endStop.blue - startStop.blue) * ratio,
   );
   return `rgb(${String(red)} ${String(green)} ${String(blue)})`;
+}
+
+function displayMagnitudeRatio(magnitude: number): number {
+  return Math.min(1, Math.max(0, magnitude / MAX_RENDER_MAGNITUDE));
 }
 
 function formatNumber(value: number): string {

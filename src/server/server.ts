@@ -91,7 +91,6 @@ function createRenderOptions(parameters: ParameterValues): RenderOptions {
     ...DEFAULT_RENDER_OPTIONS,
     showHeatmap: parameters.showHeatmap,
     vectorOverlayDensity: parameters.vectorOverlayDensity,
-    heatmapCellSize: parameters.heatmapCellSize,
   };
 }
 

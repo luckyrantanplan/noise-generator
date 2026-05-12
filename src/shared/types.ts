@@ -5,10 +5,7 @@ export interface ParameterValues {
   gridSparseness: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;
-  heatmapCellSize: number;
-  octaves: number;
-  persistence: number;
-  lacunarity: number;
+  spectralSlopeDbPerOct: number;
   amplitudeContrast: number;
   amplitudeMin: number;
   amplitudeMax: number;
@@ -54,5 +51,4 @@ export interface RenderOptions {
   height: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;
-  heatmapCellSize: number;
 }

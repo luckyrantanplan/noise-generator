@@ -5,12 +5,12 @@ import type { SeededRandom } from "./rng.js";
 
 interface SpectralOptions {
   scale: number;
-  octaves: number;
-  persistence: number;
-  lacunarity: number;
+  spectralSlopeDbPerOct: number;
 }
 
 type ComplexRows = Float32Array[];
+
+const DB_PER_OCTAVE_FOR_UNIT_POWER_SLOPE = 10 * Math.log10(2);
 
 export function generateWhiteNoise(
   grid: GridSpec,
@@ -140,19 +140,12 @@ function spectralEnvelope(
   }
 
   const longestSide = Math.max(grid.width, grid.height);
-  const baseCutoff = Math.max(1, longestSide / options.scale);
-  let envelope = 0;
-  let amplitude = 1;
-  let cutoff = baseCutoff;
+  const cornerFrequency = Math.max(1, longestSide / options.scale);
+  const normalizedRadius = radius / cornerFrequency;
+  const powerSlope =
+    options.spectralSlopeDbPerOct / DB_PER_OCTAVE_FOR_UNIT_POWER_SLOPE;
 
-  for (let octaveIndex = 0; octaveIndex < options.octaves; octaveIndex += 1) {
-    const normalizedRadius = radius / cutoff;
-    envelope += amplitude * Math.exp(-normalizedRadius * normalizedRadius);
-    amplitude *= options.persistence;
-    cutoff *= options.lacunarity;
-  }
-
-  return envelope;
+  return Math.pow(1 + normalizedRadius * normalizedRadius, -powerSlope / 4);
 }
 
 function normalizeComplexRowsToScalar(

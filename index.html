@@ -72,6 +72,27 @@
         color: #cbd5e1;
       }
 
+      .label-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .tooltip-indicator {
+        display: inline-grid;
+        place-items: center;
+        width: 1rem;
+        height: 1rem;
+        border: 1px solid rgb(148 163 184 / 0.45);
+        border-radius: 999px;
+        color: #94a3b8;
+        font-size: 0.72rem;
+        line-height: 1;
+        cursor: help;
+        flex: 0 0 auto;
+      }
+
       .value-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 86px;

@@ -12,7 +12,12 @@ import {
   generateWhiteNoise,
   applySpectralFilter,
 } from "../src/field/spectralNoise.js";
-import { DEFAULT_PARAMETERS, parseParameters } from "../src/shared/params.js";
+import {
+  DEFAULT_PARAMETERS,
+  MAX_FORCE,
+  MAX_SPECTRAL_SLOPE_DB_PER_OCT,
+  parseParameters,
+} from "../src/shared/params.js";
 import type { ScalarField } from "../src/shared/types.js";
 
 void test("seeded random values are reproducible", () => {
@@ -94,10 +99,9 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   const searchParams = new URLSearchParams({
     force: "999",
     gridSparseness: "0",
+    spectralSlopeDbPerOct: "999",
     showHeatmap: "false",
     vectorOverlayDensity: "999",
-    heatmapCellSize: "0",
-    octaves: "3.8",
     amplitudeMin: "0.9",
     amplitudeMax: "0.2",
     randomSeed: "  tuned-seed  ",
@@ -105,12 +109,14 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
 
   const parsedParameters = parseParameters(searchParams);
 
-  assert.equal(parsedParameters.force, 80);
+  assert.equal(parsedParameters.force, MAX_FORCE);
   assert.equal(parsedParameters.gridSparseness, 1);
+  assert.equal(
+    parsedParameters.spectralSlopeDbPerOct,
+    MAX_SPECTRAL_SLOPE_DB_PER_OCT,
+  );
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 64);
-  assert.equal(parsedParameters.heatmapCellSize, 1);
-  assert.equal(parsedParameters.octaves, 4);
   assert.equal(parsedParameters.amplitudeMin, 0.2);
   assert.equal(parsedParameters.amplitudeMax, 0.9);
   assert.equal(parsedParameters.randomSeed, "tuned-seed");
@@ -121,9 +127,7 @@ void test("spectral filtering normalizes noise into unit range", () => {
   const noise = generateWhiteNoise({ width: 8, height: 8 }, random);
   const filtered = applySpectralFilter(noise, {
     scale: DEFAULT_PARAMETERS.magnitudeScale,
-    octaves: DEFAULT_PARAMETERS.octaves,
-    persistence: DEFAULT_PARAMETERS.persistence,
-    lacunarity: DEFAULT_PARAMETERS.lacunarity,
+    spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
   for (const value of filtered.values) {
@@ -137,9 +141,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   const noise = generateWhiteNoise({ width: 96, height: 72 }, random);
   const filtered = applySpectralFilter(noise, {
     scale: DEFAULT_PARAMETERS.magnitudeScale,
-    octaves: DEFAULT_PARAMETERS.octaves,
-    persistence: DEFAULT_PARAMETERS.persistence,
-    lacunarity: DEFAULT_PARAMETERS.lacunarity,
+    spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
   assert.equal(filtered.grid.width, 96);
@@ -148,6 +150,21 @@ void test("spectral filtering supports non-power-of-two grids", () => {
     assert.ok(value >= 0);
     assert.ok(value <= 1);
   }
+});
+
+void test("higher spectral slope smooths the filtered field", () => {
+  const random = new SeededRandom("slope-comparison");
+  const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
+  const lowSlope = applySpectralFilter(noise, {
+    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    spectralSlopeDbPerOct: 0,
+  });
+  const highSlope = applySpectralFilter(noise, {
+    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    spectralSlopeDbPerOct: 9,
+  });
+
+  assert.ok(measureFieldRoughness(highSlope) < measureFieldRoughness(lowSlope));
 });
 
 void test("grid sparseness maps SVG units to grid dimensions", () => {
@@ -162,3 +179,26 @@ void test("default grid is power-of-two sized for FFT processing", () => {
   assert.equal(DEFAULT_GRID.width, 64);
   assert.equal(DEFAULT_GRID.height, 64);
 });
+
+function measureFieldRoughness(field: ScalarField): number {
+  let differenceTotal = 0;
+  let comparisonCount = 0;
+
+  for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < field.grid.width; columnIndex += 1) {
+      const index = rowIndex * field.grid.width + columnIndex;
+      if (columnIndex + 1 < field.grid.width) {
+        differenceTotal += Math.abs(field.values[index] - field.values[index + 1]);
+        comparisonCount += 1;
+      }
+      if (rowIndex + 1 < field.grid.height) {
+        differenceTotal += Math.abs(
+          field.values[index] - field.values[index + field.grid.width],
+        );
+        comparisonCount += 1;
+      }
+    }
+  }
+
+  return differenceTotal / comparisonCount;
+}

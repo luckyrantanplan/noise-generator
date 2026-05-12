@@ -48,7 +48,7 @@ Each swirl center contributes a rotational influence inside a local neighborhood
 
 4. Required parameters
 
-The system must expose these 15 parameters:
+The system must expose these core parameters:
 
 Force
 Global multiplier applied to the final displacement vectors.
@@ -56,12 +56,8 @@ Magnitude Scale
 Spatial scale of the amplitude field. Larger values produce broader structures; smaller values produce finer variation.
 Direction Scale
 Spatial scale of the direction field. This controls how quickly the direction changes across space.
-Octaves
-Controls fractal complexity in the spectral shaping of the noise.
-Persistence
-Controls how much energy remains in higher-frequency content. Low persistence gives smooth fields; high persistence gives rougher fields.
-Lacunarity
-Controls how frequency grows across octaves. Higher lacunarity increases separation between scales.
+Spectral Slope
+Controls spectral rolloff in dB per octave. Lower values preserve more high-frequency detail; higher values produce smoother, broader variation.
 Amplitude Contrast
 Shapes how concentrated or uniform the strong displacement regions are. High contrast produces more localized peaks.
 Amplitude Range
@@ -86,8 +82,8 @@ A practical implementation can be structured as follows:
 Generate a uniform random scalar field for magnitude.
 Generate a separate uniform random scalar field for direction.
 Apply FFT-based spectral filtering to each field independently.
-Use Magnitude Scale, Octaves, Persistence, and Lacunarity to define the spectral envelope of the magnitude field.
-Use Direction Scale, Octaves, Persistence, and Lacunarity to define the spectral envelope of the direction field.
+Use Magnitude Scale and Spectral Slope to define the spectral envelope of the magnitude field.
+Use Direction Scale and Spectral Slope to define the spectral envelope of the direction field.
 Apply Amplitude Contrast and Amplitude Range to the filtered magnitude field.
 Generate swirl centers using Poisson-disk sampling based on Swirl Density.
 For each swirl center, add a local rotational contribution based on Swirl Radius, Swirl Strength, Swirl Falloff, and Swirl Direction Randomness.

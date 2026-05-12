@@ -16,36 +16,48 @@ void test("field endpoint returns generated SVG", async () => {
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20`,
     );
     const svg = await response.text();
-    const sparseResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&vectorOverlayDensity=8&heatmapCellSize=4`,
+    const sparseVectorResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&vectorOverlayDensity=8`,
     );
-    const sparseSvg = await sparseResponse.text();
-    const sparsityResponse = await fetch(
+    const sparseVectorSvg = await sparseVectorResponse.text();
+    const denseGridResponse = await fetch(
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&gridSparseness=10`,
     );
-    const sparsitySvg = await sparsityResponse.text();
-    const denseGridResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&gridSparseness=1&showHeatmap=false`,
-    );
     const denseGridSvg = await denseGridResponse.text();
+    const coarseGridResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&gridSparseness=20`,
+    );
+    const coarseGridSvg = await coarseGridResponse.text();
+    const lowForceResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=10&showHeatmap=false`,
+    );
+    const lowForceSvg = await lowForceResponse.text();
+    const highForceResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=60&showHeatmap=false`,
+    );
+    const highForceSvg = await highForceResponse.text();
     const vectorOnlyResponse = await fetch(
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&showHeatmap=false`,
     );
     const vectorOnlySvg = await vectorOnlyResponse.text();
 
     assert.equal(response.status, 200);
-    assert.equal(sparseResponse.status, 200);
-    assert.equal(sparsityResponse.status, 200);
+    assert.equal(sparseVectorResponse.status, 200);
     assert.equal(denseGridResponse.status, 200);
+    assert.equal(coarseGridResponse.status, 200);
+    assert.equal(lowForceResponse.status, 200);
+    assert.equal(highForceResponse.status, 200);
     assert.equal(vectorOnlyResponse.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /image\/svg\+xml/);
     assert.match(svg, /^<svg/);
     assert.match(svg, /<line/);
     assert.match(svg, /Scale \(SVG units\)/);
-    assert.ok(countSvgTag(svg, "line") > countSvgTag(sparseSvg, "line"));
-    assert.ok(countSvgTag(svg, "rect") > countSvgTag(sparseSvg, "rect"));
-    assert.equal(countSvgTag(sparsitySvg, "rect"), 96 * 72 + 1);
+    assert.ok(countSvgTag(svg, "line") > countSvgTag(sparseVectorSvg, "line"));
+    assert.equal(countSvgTag(svg, "rect"), countSvgTag(sparseVectorSvg, "rect"));
     assert.match(denseGridSvg, /^<svg/);
+    assert.equal(countSvgTag(denseGridSvg, "rect"), 96 * 72 + 1);
+    assert.equal(countSvgTag(coarseGridSvg, "rect"), 48 * 36 + 1);
+    assert.notEqual(lowForceSvg, highForceSvg);
     assert.equal(countSvgTag(vectorOnlySvg, "line") > 0, true);
     assert.equal(countSvgTag(vectorOnlySvg, "rect"), 1);
     assert.match(vectorOnlySvg, /Scale \(SVG units\)/);

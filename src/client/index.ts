@@ -4,6 +4,7 @@ import {
   serializeParameters,
   type BooleanParameterDefinition,
   type NumericParameterDefinition,
+  type SeedParameterDefinition,
 } from "../shared/params.js";
 import type { ParameterValues } from "../shared/types.js";
 
@@ -37,7 +38,7 @@ function buildControls(
 ): void {
   for (const definition of PARAMETER_DEFINITIONS) {
     if (definition.key === "randomSeed") {
-      form.appendChild(createSeedControl(parameters));
+      form.appendChild(createSeedControl(definition, parameters));
       continue;
     }
     if (definition.key === "showHeatmap") {
@@ -57,7 +58,7 @@ function createBooleanControl(
 
   const label = document.createElement("label");
   label.htmlFor = definition.key;
-  label.textContent = definition.label;
+  label.appendChild(createLabelContent(definition.label, definition.description));
 
   const input = document.createElement("input");
   input.id = definition.key;
@@ -69,17 +70,22 @@ function createBooleanControl(
     queuePreviewRefresh(parameters);
   });
 
+  applyTooltip([wrapper, label, input], definition.description);
+
   wrapper.append(label, input);
   return wrapper;
 }
 
-function createSeedControl(parameters: ParameterValues): HTMLElement {
+function createSeedControl(
+  definition: SeedParameterDefinition,
+  parameters: ParameterValues,
+): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "control";
 
   const label = document.createElement("label");
   label.htmlFor = "randomSeed";
-  label.textContent = "Random Seed";
+  label.appendChild(createLabelContent(definition.label, definition.description));
 
   const input = document.createElement("input");
   input.id = "randomSeed";
@@ -90,6 +96,8 @@ function createSeedControl(parameters: ParameterValues): HTMLElement {
     parameters.randomSeed = input.value;
     queuePreviewRefresh(parameters);
   });
+
+  applyTooltip([wrapper, label, input], definition.description);
 
   wrapper.append(label, input);
   return wrapper;
@@ -104,8 +112,10 @@ function createNumericControl(
 
   const label = document.createElement("label");
   label.htmlFor = definition.key;
-  const labelText = document.createElement("span");
-  labelText.textContent = definition.label;
+  const labelText = createLabelContent(
+    definition.label,
+    definition.description,
+  );
   const valueOutput = document.createElement("span");
   valueOutput.textContent = String(parameters[definition.key]);
   label.append(labelText, valueOutput);
@@ -128,6 +138,11 @@ function createNumericControl(
   numberInput.max = String(definition.max);
   numberInput.step = String(definition.step);
   numberInput.value = String(parameters[definition.key]);
+
+  applyTooltip(
+    [wrapper, label, valueOutput, rangeInput, numberInput],
+    definition.description,
+  );
 
   const updateValue = (rawValue: string): void => {
     const nextValue = definition.integer
@@ -153,6 +168,29 @@ function createNumericControl(
   row.append(rangeInput, numberInput);
   wrapper.append(label, row);
   return wrapper;
+}
+
+function createLabelContent(text: string, description: string): HTMLElement {
+  const content = document.createElement("span");
+  content.className = "label-main";
+
+  const textNode = document.createElement("span");
+  textNode.textContent = text;
+
+  const indicator = document.createElement("span");
+  indicator.className = "tooltip-indicator";
+  indicator.textContent = "?";
+  indicator.title = description;
+  indicator.setAttribute("aria-label", description);
+
+  content.append(textNode, indicator);
+  return content;
+}
+
+function applyTooltip(elements: HTMLElement[], description: string): void {
+  for (const element of elements) {
+    element.title = description;
+  }
 }
 
 function queuePreviewRefresh(parameters: ParameterValues): void {
