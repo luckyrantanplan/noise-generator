@@ -63,9 +63,7 @@ function accumulateSwirlsAtPoint(
     const falloff = Math.pow(1 - normalizedDistance, parameters.swirlFalloff);
     const influence = falloff * parameters.swirlStrength;
     const tangentAngle =
-      Math.atan2(deltaY, deltaX) +
-      swirl.direction * (Math.PI / 2) +
-      swirl.phase;
+      Math.atan2(deltaY, deltaX) + swirl.direction * (Math.PI / 2);
 
     vectorX[scalarIndex] += Math.cos(tangentAngle) * influence;
     vectorY[scalarIndex] += Math.sin(tangentAngle) * influence;

@@ -27,11 +27,11 @@ export function generateVectorField(
   const magnitudeNoise = generateWhiteNoise(grid, magnitudeRandom);
   const directionNoise = generateWhiteNoise(grid, directionRandom);
   const filteredMagnitude = applySpectralFilter(magnitudeNoise, {
-    scale: parameters.magnitudeScale,
+    cutoffPercent: parameters.magnitudeScale,
     spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
   });
   const filteredDirection = applySpectralFilter(directionNoise, {
-    scale: parameters.directionScale,
+    cutoffPercent: parameters.directionScale,
     spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
   });
 
@@ -39,9 +39,9 @@ export function generateVectorField(
   const swirls = sampleSwirlCenters(
     {
       density: parameters.swirlDensity,
-      radius: parameters.swirlRadius,
+      radius: parameters.swirlRadius / 100,
       strength: parameters.swirlStrength,
-      directionRandomness: parameters.swirlDirectionRandomness,
+      directionBias: parameters.swirlDirectionBias,
     },
     swirlRandom,
   );

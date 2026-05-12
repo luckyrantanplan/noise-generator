@@ -133,10 +133,16 @@ function createNumericControl(
   rangeInput.value = String(parameters[definition.key]);
 
   const numberInput = document.createElement("input");
-  numberInput.type = "number";
-  numberInput.min = String(definition.min);
-  numberInput.max = String(definition.max);
-  numberInput.step = String(definition.step);
+  if (definition.integer) {
+    numberInput.type = "number";
+    numberInput.min = String(definition.min);
+    numberInput.max = String(definition.max);
+    numberInput.step = String(definition.step);
+  } else {
+    numberInput.type = "text";
+    numberInput.inputMode = "decimal";
+    numberInput.setAttribute("aria-label", definition.label);
+  }
   numberInput.value = String(parameters[definition.key]);
 
   applyTooltip(
@@ -144,25 +150,41 @@ function createNumericControl(
     definition.description,
   );
 
-  const updateValue = (rawValue: string): void => {
-    const nextValue = definition.integer
-      ? Math.round(Number(rawValue))
-      : Number(rawValue);
-    if (!Number.isFinite(nextValue)) {
+  const commitValue = (rawValue: string, writeBackToInput: boolean): void => {
+    const nextValue = parseNumericControlValue(rawValue, definition);
+    if (nextValue === null) {
+      if (writeBackToInput) {
+        numberInput.value = String(parameters[definition.key]);
+      }
       return;
     }
     parameters[definition.key] = nextValue;
     rangeInput.value = String(nextValue);
-    numberInput.value = String(nextValue);
     valueOutput.textContent = String(nextValue);
+    if (writeBackToInput) {
+      numberInput.value = String(nextValue);
+    }
     queuePreviewRefresh(parameters);
   };
 
   rangeInput.addEventListener("input", () => {
-    updateValue(rangeInput.value);
+    commitValue(rangeInput.value, true);
   });
   numberInput.addEventListener("input", () => {
-    updateValue(numberInput.value);
+    const nextValue = parseNumericControlValue(numberInput.value, definition);
+    if (nextValue === null) {
+      return;
+    }
+    parameters[definition.key] = nextValue;
+    rangeInput.value = String(nextValue);
+    valueOutput.textContent = String(nextValue);
+    queuePreviewRefresh(parameters);
+  });
+  numberInput.addEventListener("change", () => {
+    commitValue(numberInput.value, true);
+  });
+  numberInput.addEventListener("blur", () => {
+    commitValue(numberInput.value, true);
   });
 
   row.append(rangeInput, numberInput);
@@ -191,6 +213,33 @@ function applyTooltip(elements: HTMLElement[], description: string): void {
   for (const element of elements) {
     element.title = description;
   }
+}
+
+function parseNumericControlValue(
+  rawValue: string,
+  definition: NumericParameterDefinition,
+): number | null {
+  const normalizedValue = rawValue.trim().replace(/,/g, ".");
+  if (
+    normalizedValue.length === 0 ||
+    normalizedValue === "." ||
+    normalizedValue === "+" ||
+    normalizedValue === "-" ||
+    normalizedValue.endsWith(".")
+  ) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue);
+  if (!Number.isFinite(parsedValue)) {
+    return null;
+  }
+
+  const roundedValue = definition.integer
+    ? Math.round(parsedValue)
+    : parsedValue;
+
+  return Math.min(definition.max, Math.max(definition.min, roundedValue));
 }
 
 function queuePreviewRefresh(parameters: ParameterValues): void {

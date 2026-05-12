@@ -7,13 +7,12 @@ export interface ParameterValues {
   vectorOverlayDensity: number;
   spectralSlopeDbPerOct: number;
   amplitudeContrast: number;
-  amplitudeMin: number;
   amplitudeMax: number;
   swirlDensity: number;
   swirlRadius: number;
   swirlStrength: number;
   swirlFalloff: number;
-  swirlDirectionRandomness: number;
+  swirlDirectionBias: number;
   directionNoiseMix: number;
   randomSeed: string;
 }
@@ -33,7 +32,6 @@ export interface SwirlCenter {
   positionY: number;
   radius: number;
   direction: -1 | 1;
-  phase: number;
 }
 
 export interface VectorField {

@@ -11,7 +11,7 @@ interface PoissonOptions {
   density: number;
   radius: number;
   strength: number;
-  directionRandomness: number;
+  directionBias: number;
 }
 
 const CANDIDATE_LIMIT = 30;
@@ -33,18 +33,13 @@ export function sampleSwirlCenters(
 
   const minimumDistance = densityToPoissonRadius(options.density);
   const points = samplePoissonDisk(minimumDistance, random);
-  return points.map((point, pointIndex) => {
-    const randomSign = random.next() < 0.5 ? -1 : 1;
-    const direction =
-      random.next() < options.directionRandomness
-        ? randomSign
-        : alternatingDirection(pointIndex);
+  return points.map((point) => {
+    const direction = random.next() < options.directionBias ? 1 : -1;
     return {
       positionX: point.positionX,
       positionY: point.positionY,
       radius: options.radius,
       direction,
-      phase: random.between(0, Math.PI * 2) * options.directionRandomness,
     };
   });
 }
@@ -185,6 +180,3 @@ function addPoint(
   occupancy[gridRow * gridWidth + gridColumn] = pointIndex;
 }
 
-function alternatingDirection(pointIndex: number): -1 | 1 {
-  return pointIndex % 2 === 0 ? 1 : -1;
-}

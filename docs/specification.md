@@ -53,9 +53,9 @@ The system must expose these core parameters:
 Force
 Global multiplier applied to the final displacement vectors.
 Magnitude Scale
-Spatial scale of the amplitude field. Larger values produce broader structures; smaller values produce finer variation.
+Magnitude cutoff percentage of the longest grid side. Higher percentages preserve finer variation; lower percentages produce broader structures.
 Direction Scale
-Spatial scale of the direction field. This controls how quickly the direction changes across space.
+Direction cutoff percentage of the longest grid side. Higher percentages preserve faster direction changes; lower percentages produce smoother flow.
 Spectral Slope
 Controls spectral rolloff in dB per octave. Lower values preserve more high-frequency detail; higher values produce smoother, broader variation.
 Amplitude Contrast
@@ -65,13 +65,13 @@ Defines the minimum and maximum amplitude allowed after normalization and contra
 Swirl Density
 Controls the expected number of swirl centers per unit area. Internally this is implemented through Poisson-disk sampling radius.
 Swirl Radius
-Radius of influence of each swirl center.
+Radius of influence of each swirl center as a percentage of the shorter side.
 Swirl Strength
 Strength of the rotational contribution around each swirl center.
 Swirl Falloff
 Controls how the swirl influence decays with distance from the center.
-Swirl Direction Randomness
-Controls the balance between clockwise and counterclockwise swirls, and the randomness of their orientation.
+Swirl Direction Bias
+Controls the clockwise-versus-counterclockwise bias of swirl centers. Low values favor clockwise spin, high values favor counterclockwise spin.
 Direction Noise Mix
 Blends the stochastic direction field with the explicit swirl contribution.
 Random Seed

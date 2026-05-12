@@ -4,7 +4,7 @@ import type { GridSpec, ScalarField } from "../shared/types.js";
 import type { SeededRandom } from "./rng.js";
 
 interface SpectralOptions {
-  scale: number;
+  cutoffPercent: number;
   spectralSlopeDbPerOct: number;
 }
 
@@ -140,7 +140,7 @@ function spectralEnvelope(
   }
 
   const longestSide = Math.max(grid.width, grid.height);
-  const cornerFrequency = Math.max(1, longestSide / options.scale);
+  const cornerFrequency = Math.max(1, (options.cutoffPercent / 100) * longestSide);
   const normalizedRadius = radius / cornerFrequency;
   const powerSlope =
     options.spectralSlopeDbPerOct / DB_PER_OCTAVE_FOR_UNIT_POWER_SLOPE;

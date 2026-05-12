@@ -8,6 +8,7 @@ import {
   sampleSwirlCenters,
 } from "../src/field/poissonDisk.js";
 import { SeededRandom } from "../src/field/rng.js";
+import { evaluateSwirlInfluence } from "../src/field/swirls.js";
 import {
   generateWhiteNoise,
   applySpectralFilter,
@@ -15,7 +16,10 @@ import {
 import {
   DEFAULT_PARAMETERS,
   MAX_FORCE,
+  MAX_CUTOFF_PERCENT,
   MAX_SPECTRAL_SLOPE_DB_PER_OCT,
+  MAX_SWIRL_RADIUS_PERCENT,
+  MIN_CUTOFF_PERCENT,
   parseParameters,
 } from "../src/shared/params.js";
 import type { ScalarField } from "../src/shared/types.js";
@@ -45,14 +49,13 @@ void test("amplitude shaping remaps values into the configured range", () => {
   };
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    amplitudeMin: 0.2,
     amplitudeMax: 0.8,
     amplitudeContrast: 1,
   };
 
   const shapedValues = shapeAmplitudeField(field, parameters);
 
-  assert.ok(Math.abs(shapedValues[0] - 0.2) < 1e-6);
+  assert.ok(Math.abs(shapedValues[0] - 0) < 1e-6);
   assert.ok(Math.abs(shapedValues[3] - 0.8) < 1e-6);
   assert.ok(shapedValues[1] > shapedValues[0]);
   assert.ok(shapedValues[2] < shapedValues[3]);
@@ -73,7 +76,7 @@ void test("poisson sampler respects minimum spacing", () => {
       density,
       radius: 0.2,
       strength: 1,
-      directionRandomness: 1,
+      directionBias: 0.5,
     },
     new SeededRandom("spacing"),
   );
@@ -95,21 +98,93 @@ void test("poisson sampler respects minimum spacing", () => {
   }
 });
 
+void test("swirl direction bias controls clockwise versus counterclockwise ratio", () => {
+  const lowBiasCenters = sampleSwirlCenters(
+    {
+      density: 48,
+      radius: 0.2,
+      strength: 1,
+      directionBias: 0,
+    },
+    new SeededRandom("bias-low"),
+  );
+  const balancedCenters = sampleSwirlCenters(
+    {
+      density: 48,
+      radius: 0.2,
+      strength: 1,
+      directionBias: 0.5,
+    },
+    new SeededRandom("bias-mid"),
+  );
+  const highBiasCenters = sampleSwirlCenters(
+    {
+      density: 48,
+      radius: 0.2,
+      strength: 1,
+      directionBias: 1,
+    },
+    new SeededRandom("bias-high"),
+  );
+
+  assert.ok(lowBiasCenters.every((center) => center.direction === -1));
+  assert.ok(highBiasCenters.every((center) => center.direction === 1));
+  assert.ok(balancedCenters.some((center) => center.direction === -1));
+  assert.ok(balancedCenters.some((center) => center.direction === 1));
+});
+
+void test("swirl influence remains tangential to the swirl radius", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    swirlStrength: 1,
+    swirlFalloff: 1,
+  };
+  const field = evaluateSwirlInfluence(
+    { width: 5, height: 5 },
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.5,
+        direction: 1,
+      },
+    ],
+    parameters,
+  );
+
+  const pointColumn = 3;
+  const pointRow = 2;
+  const pointIndex = pointRow * 5 + pointColumn;
+  const pointX = pointColumn / 4;
+  const pointY = pointRow / 4;
+  const radialX = pointX - 0.5;
+  const radialY = pointY - 0.5;
+  const dotProduct =
+    radialX * field.vectorX[pointIndex] + radialY * field.vectorY[pointIndex];
+
+  assert.ok(Math.abs(dotProduct) < 1e-6);
+});
+
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
   const searchParams = new URLSearchParams({
     force: "999",
+    magnitudeScale: "999",
+    directionScale: "0",
     gridSparseness: "0",
     spectralSlopeDbPerOct: "999",
     showHeatmap: "false",
     vectorOverlayDensity: "999",
-    amplitudeMin: "0.9",
     amplitudeMax: "0.2",
+    swirlRadius: "999",
+    swirlDirectionBias: "999",
     randomSeed: "  tuned-seed  ",
   });
 
   const parsedParameters = parseParameters(searchParams);
 
   assert.equal(parsedParameters.force, MAX_FORCE);
+  assert.equal(parsedParameters.magnitudeScale, MAX_CUTOFF_PERCENT);
+  assert.equal(parsedParameters.directionScale, MIN_CUTOFF_PERCENT);
   assert.equal(parsedParameters.gridSparseness, 1);
   assert.equal(
     parsedParameters.spectralSlopeDbPerOct,
@@ -117,8 +192,9 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   );
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 64);
-  assert.equal(parsedParameters.amplitudeMin, 0.2);
-  assert.equal(parsedParameters.amplitudeMax, 0.9);
+  assert.equal(parsedParameters.amplitudeMax, 0.2);
+  assert.equal(parsedParameters.swirlRadius, MAX_SWIRL_RADIUS_PERCENT);
+  assert.equal(parsedParameters.swirlDirectionBias, 1);
   assert.equal(parsedParameters.randomSeed, "tuned-seed");
 });
 
@@ -126,7 +202,7 @@ void test("spectral filtering normalizes noise into unit range", () => {
   const random = new SeededRandom("spectral");
   const noise = generateWhiteNoise({ width: 8, height: 8 }, random);
   const filtered = applySpectralFilter(noise, {
-    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -140,7 +216,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   const random = new SeededRandom("non-power-of-two");
   const noise = generateWhiteNoise({ width: 96, height: 72 }, random);
   const filtered = applySpectralFilter(noise, {
-    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -156,15 +232,30 @@ void test("higher spectral slope smooths the filtered field", () => {
   const random = new SeededRandom("slope-comparison");
   const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
   const lowSlope = applySpectralFilter(noise, {
-    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
     spectralSlopeDbPerOct: 0,
   });
   const highSlope = applySpectralFilter(noise, {
-    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
     spectralSlopeDbPerOct: 9,
   });
 
   assert.ok(measureFieldRoughness(highSlope) < measureFieldRoughness(lowSlope));
+});
+
+void test("higher cutoff percent preserves finer spatial variation", () => {
+  const random = new SeededRandom("cutoff-comparison");
+  const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
+  const lowCutoff = applySpectralFilter(noise, {
+    cutoffPercent: MIN_CUTOFF_PERCENT,
+    spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
+  });
+  const highCutoff = applySpectralFilter(noise, {
+    cutoffPercent: MAX_CUTOFF_PERCENT,
+    spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
+  });
+
+  assert.ok(measureFieldRoughness(highCutoff) > measureFieldRoughness(lowCutoff));
 });
 
 void test("grid sparseness maps SVG units to grid dimensions", () => {

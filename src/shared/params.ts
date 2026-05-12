@@ -35,23 +35,26 @@ export type ParameterDefinition =
 
 export const MAX_FORCE = 80;
 export const MAX_SPECTRAL_SLOPE_DB_PER_OCT = 12;
+export const MIN_CUTOFF_PERCENT = 0;
+export const MAX_CUTOFF_PERCENT = 100;
+export const MIN_SWIRL_RADIUS_PERCENT = 3;
+export const MAX_SWIRL_RADIUS_PERCENT = 45;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   force: 26,
-  magnitudeScale: 28,
-  directionScale: 18,
+  magnitudeScale: 3.6,
+  directionScale: 5.6,
   gridSparseness: 15,
   showHeatmap: true,
   vectorOverlayDensity: 16,
   spectralSlopeDbPerOct: 6,
   amplitudeContrast: 1.4,
-  amplitudeMin: 0.08,
   amplitudeMax: 1,
   swirlDensity: 18,
-  swirlRadius: 0.18,
+  swirlRadius: 18,
   swirlStrength: 1.4,
   swirlFalloff: 2,
-  swirlDirectionRandomness: 0.75,
+  swirlDirectionBias: 0.5,
   directionNoiseMix: 0.45,
   randomSeed: "field-001",
 };
@@ -69,22 +72,22 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   },
   {
     key: "magnitudeScale",
-    label: "Magnitude Scale",
+    label: "Magnitude Scale (%)",
     description:
-      "Sets the characteristic scale of the magnitude spectrum. Higher values shift energy toward broader structures; lower values preserve finer detail.",
-    min: 4,
-    max: 80,
-    step: 1,
+      "Sets the magnitude cutoff as a percentage of the longest grid side. Higher percentages preserve finer detail; lower percentages smooth the amplitude field more strongly.",
+    min: MIN_CUTOFF_PERCENT,
+    max: MAX_CUTOFF_PERCENT,
+    step: 0.1,
     integer: false,
   },
   {
     key: "directionScale",
-    label: "Direction Scale",
+    label: "Direction Scale (%)",
     description:
-      "Sets the characteristic scale of the direction spectrum. Higher values produce smoother directional flow; lower values make direction change faster.",
-    min: 4,
-    max: 80,
-    step: 1,
+      "Sets the direction cutoff as a percentage of the longest grid side. Higher percentages preserve faster directional variation; lower percentages produce smoother flow.",
+    min: MIN_CUTOFF_PERCENT,
+    max: MAX_CUTOFF_PERCENT,
+    step: 0.1,
     integer: false,
   },
   {
@@ -127,27 +130,17 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "amplitudeContrast",
     label: "Amplitude Contrast",
     description:
-      "Applies contrast to the normalized magnitude field before remapping it into the output range. Higher values push more cells toward extremes.",
+      "Applies contrast to the normalized magnitude field before remapping it into the output range from 0 up to Amplitude Range Max. Higher values push more cells toward extremes.",
     min: 0.25,
     max: 4,
     step: 0.05,
     integer: false,
   },
   {
-    key: "amplitudeMin",
-    label: "Amplitude Range Min",
-    description:
-      "Lower bound of the final displacement magnitude after shaping. Increase it to keep more motion in low-energy areas.",
-    min: 0,
-    max: 1,
-    step: 0.01,
-    integer: false,
-  },
-  {
     key: "amplitudeMax",
     label: "Amplitude Range Max",
     description:
-      "Upper bound of the final displacement magnitude after shaping. Lower it to cap the strongest regions in the field.",
+      "Upper bound of the final displacement magnitude after shaping. Lower it to cap the strongest regions in the field while the minimum stays fixed at 0.",
     min: 0,
     max: 1,
     step: 0.01,
@@ -165,12 +158,12 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   },
   {
     key: "swirlRadius",
-    label: "Swirl Radius",
+    label: "Swirl Radius (%)",
     description:
-      "Radius of each swirl influence as a fraction of the shorter render side. Larger values make each swirl affect a wider area.",
-    min: 0.03,
-    max: 0.45,
-    step: 0.01,
+      "Radius of each swirl influence as a percentage of the shorter render side. Larger values make each swirl affect a wider area.",
+    min: MIN_SWIRL_RADIUS_PERCENT,
+    max: MAX_SWIRL_RADIUS_PERCENT,
+    step: 0.5,
     integer: false,
   },
   {
@@ -194,10 +187,10 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
-    key: "swirlDirectionRandomness",
-    label: "Swirl Direction Randomness",
+    key: "swirlDirectionBias",
+    label: "Swirl Direction Bias",
     description:
-      "Controls how randomly swirl directions flip between clockwise and counterclockwise. Lower values make the pattern more uniform.",
+      "Biases swirl spin direction. 0 favors clockwise swirls, 0.5 yields a balanced mix, and 1 favors counterclockwise swirls.",
     min: 0,
     max: 1,
     step: 0.01,
@@ -243,12 +236,6 @@ export function parseParameters(
     }
 
     parsedValues[definition.key] = parseNumericValue(suppliedValue, definition);
-  }
-
-  if (parsedValues.amplitudeMin > parsedValues.amplitudeMax) {
-    const previousMinimum = parsedValues.amplitudeMin;
-    parsedValues.amplitudeMin = parsedValues.amplitudeMax;
-    parsedValues.amplitudeMax = previousMinimum;
   }
 
   return parsedValues;
