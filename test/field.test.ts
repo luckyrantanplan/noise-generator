@@ -168,8 +168,7 @@ void test("swirl influence remains tangential to the swirl radius", () => {
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
   const searchParams = new URLSearchParams({
     force: "999",
-    magnitudeScale: "999",
-    directionScale: "0",
+    scale: "999",
     gridSparseness: "0",
     spectralSlopeDbPerOct: "999",
     showHeatmap: "false",
@@ -183,8 +182,7 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   const parsedParameters = parseParameters(searchParams);
 
   assert.equal(parsedParameters.force, MAX_FORCE);
-  assert.equal(parsedParameters.magnitudeScale, MAX_CUTOFF_PERCENT);
-  assert.equal(parsedParameters.directionScale, MIN_CUTOFF_PERCENT);
+  assert.equal(parsedParameters.scale, MAX_CUTOFF_PERCENT);
   assert.equal(parsedParameters.gridSparseness, 1);
   assert.equal(
     parsedParameters.spectralSlopeDbPerOct,
@@ -202,7 +200,7 @@ void test("spectral filtering normalizes noise into unit range", () => {
   const random = new SeededRandom("spectral");
   const noise = generateWhiteNoise({ width: 8, height: 8 }, random);
   const filtered = applySpectralFilter(noise, {
-    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.scale,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -216,7 +214,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   const random = new SeededRandom("non-power-of-two");
   const noise = generateWhiteNoise({ width: 96, height: 72 }, random);
   const filtered = applySpectralFilter(noise, {
-    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.scale,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -232,11 +230,11 @@ void test("higher spectral slope smooths the filtered field", () => {
   const random = new SeededRandom("slope-comparison");
   const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
   const lowSlope = applySpectralFilter(noise, {
-    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.scale,
     spectralSlopeDbPerOct: 0,
   });
   const highSlope = applySpectralFilter(noise, {
-    cutoffPercent: DEFAULT_PARAMETERS.magnitudeScale,
+    cutoffPercent: DEFAULT_PARAMETERS.scale,
     spectralSlopeDbPerOct: 9,
   });
 

@@ -42,8 +42,7 @@ export const MAX_SWIRL_RADIUS_PERCENT = 45;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   force: 26,
-  magnitudeScale: 3.6,
-  directionScale: 5.6,
+  scale: 4.5,
   gridSparseness: 15,
   showHeatmap: true,
   vectorOverlayDensity: 16,
@@ -71,20 +70,10 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     integer: false,
   },
   {
-    key: "magnitudeScale",
-    label: "Magnitude Scale (%)",
+    key: "scale",
+    label: "Scale (%)",
     description:
-      "Sets the magnitude cutoff as a percentage of the longest grid side. Higher percentages preserve finer detail; lower percentages smooth the amplitude field more strongly.",
-    min: MIN_CUTOFF_PERCENT,
-    max: MAX_CUTOFF_PERCENT,
-    step: 0.1,
-    integer: false,
-  },
-  {
-    key: "directionScale",
-    label: "Direction Scale (%)",
-    description:
-      "Sets the direction cutoff as a percentage of the longest grid side. Higher percentages preserve faster directional variation; lower percentages produce smoother flow.",
+      "Sets the shared cutoff as a percentage of the longest grid side for both magnitude and direction fields. Higher percentages preserve finer detail; lower percentages produce smoother, broader structure.",
     min: MIN_CUTOFF_PERCENT,
     max: MAX_CUTOFF_PERCENT,
     step: 0.1,

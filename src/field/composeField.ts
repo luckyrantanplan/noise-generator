@@ -27,11 +27,11 @@ export function generateVectorField(
   const magnitudeNoise = generateWhiteNoise(grid, magnitudeRandom);
   const directionNoise = generateWhiteNoise(grid, directionRandom);
   const filteredMagnitude = applySpectralFilter(magnitudeNoise, {
-    cutoffPercent: parameters.magnitudeScale,
+    cutoffPercent: parameters.scale,
     spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
   });
   const filteredDirection = applySpectralFilter(directionNoise, {
-    cutoffPercent: parameters.directionScale,
+    cutoffPercent: parameters.scale,
     spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
   });
 

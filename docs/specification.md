@@ -52,10 +52,8 @@ The system must expose these core parameters:
 
 Force
 Global multiplier applied to the final displacement vectors.
-Magnitude Scale
-Magnitude cutoff percentage of the longest grid side. Higher percentages preserve finer variation; lower percentages produce broader structures.
-Direction Scale
-Direction cutoff percentage of the longest grid side. Higher percentages preserve faster direction changes; lower percentages produce smoother flow.
+Scale
+Shared cutoff percentage of the longest grid side for both magnitude and direction fields. Higher percentages preserve finer variation and faster directional changes; lower percentages produce broader, smoother structure.
 Spectral Slope
 Controls spectral rolloff in dB per octave. Lower values preserve more high-frequency detail; higher values produce smoother, broader variation.
 Amplitude Contrast
@@ -82,8 +80,7 @@ A practical implementation can be structured as follows:
 Generate a uniform random scalar field for magnitude.
 Generate a separate uniform random scalar field for direction.
 Apply FFT-based spectral filtering to each field independently.
-Use Magnitude Scale and Spectral Slope to define the spectral envelope of the magnitude field.
-Use Direction Scale and Spectral Slope to define the spectral envelope of the direction field.
+Use Scale and Spectral Slope to define the shared spectral envelope of the magnitude and direction fields.
 Apply Amplitude Contrast and Amplitude Range to the filtered magnitude field.
 Generate swirl centers using Poisson-disk sampling based on Swirl Density.
 For each swirl center, add a local rotational contribution based on Swirl Radius, Swirl Strength, Swirl Falloff, and Swirl Direction Randomness.
