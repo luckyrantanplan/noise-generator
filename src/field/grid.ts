@@ -6,9 +6,19 @@ export const DEFAULT_GRID: GridSpec = {
 };
 
 export function createGrid(width: number, height: number): GridSpec {
-  assertPowerOfTwo(width, "width");
-  assertPowerOfTwo(height, "height");
+  assertPositiveInteger(width, "width");
+  assertPositiveInteger(height, "height");
   return { width, height };
+}
+
+export function createGridFromSparseness(
+  renderWidth: number,
+  renderHeight: number,
+  gridSparseness: number,
+): GridSpec {
+  const width = Math.max(1, Math.round(renderWidth / gridSparseness));
+  const height = Math.max(1, Math.round(renderHeight / gridSparseness));
+  return createGrid(width, height);
 }
 
 export function indexAt(
@@ -29,10 +39,8 @@ export function normalizedCoordinate(
   return cellIndex / (cellCount - 1);
 }
 
-function assertPowerOfTwo(value: number, name: string): void {
-  if (!Number.isInteger(value) || value < 4 || (value & (value - 1)) !== 0) {
-    throw new Error(
-      `${name} must be a power of two greater than or equal to 4`,
-    );
+function assertPositiveInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer`);
   }
 }

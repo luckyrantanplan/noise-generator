@@ -27,11 +27,14 @@ export function applySpectralFilter(
   field: ScalarField,
   options: SpectralOptions,
 ): ScalarField {
-  const complexRows = scalarToComplexRows(field);
-  const frequencyRows = forwardTransform2d(complexRows, field.grid);
-  applyEnvelope(frequencyRows, field.grid, options);
-  const spatialRows = inverseTransform2d(frequencyRows, field.grid);
-  return normalizeComplexRowsToScalar(spatialRows, field.grid);
+  const transformGrid = createTransformGrid(field.grid);
+  const paddedField = tileFieldToGrid(field, transformGrid);
+  const complexRows = scalarToComplexRows(paddedField);
+  const frequencyRows = forwardTransform2d(complexRows, transformGrid);
+  applyEnvelope(frequencyRows, transformGrid, field.grid, options);
+  const spatialRows = inverseTransform2d(frequencyRows, transformGrid);
+  const croppedRows = cropComplexRows(spatialRows, field.grid);
+  return normalizeComplexRowsToScalar(croppedRows, field.grid);
 }
 
 function scalarToComplexRows(field: ScalarField): ComplexRows {
@@ -110,15 +113,16 @@ function transformColumns(rows: ComplexRows, grid: GridSpec): ComplexRows {
 
 function applyEnvelope(
   rows: ComplexRows,
-  grid: GridSpec,
+  transformGrid: GridSpec,
+  sourceGrid: GridSpec,
   options: SpectralOptions,
 ): void {
-  for (let rowIndex = 0; rowIndex < grid.height; rowIndex += 1) {
-    const frequencyY = signedFrequency(rowIndex, grid.height);
-    for (let columnIndex = 0; columnIndex < grid.width; columnIndex += 1) {
-      const frequencyX = signedFrequency(columnIndex, grid.width);
+  for (let rowIndex = 0; rowIndex < transformGrid.height; rowIndex += 1) {
+    const frequencyY = signedFrequency(rowIndex, transformGrid.height);
+    for (let columnIndex = 0; columnIndex < transformGrid.width; columnIndex += 1) {
+      const frequencyX = signedFrequency(columnIndex, transformGrid.width);
       const radius = Math.hypot(frequencyX, frequencyY);
-      const envelope = spectralEnvelope(radius, grid, options);
+      const envelope = spectralEnvelope(radius, sourceGrid, options);
       const complexIndex = columnIndex * 2;
       rows[rowIndex][complexIndex] *= envelope;
       rows[rowIndex][complexIndex + 1] *= envelope;
@@ -190,6 +194,44 @@ function createEmptyComplexRows(grid: GridSpec): ComplexRows {
   return rows;
 }
 
+function createTransformGrid(grid: GridSpec): GridSpec {
+  return {
+    width: nextPowerOfTwo(grid.width),
+    height: nextPowerOfTwo(grid.height),
+  };
+}
+
+function tileFieldToGrid(field: ScalarField, targetGrid: GridSpec): ScalarField {
+  const values = new Float32Array(targetGrid.width * targetGrid.height);
+
+  for (let rowIndex = 0; rowIndex < targetGrid.height; rowIndex += 1) {
+    const sourceRow = rowIndex % field.grid.height;
+    for (let columnIndex = 0; columnIndex < targetGrid.width; columnIndex += 1) {
+      const sourceColumn = columnIndex % field.grid.width;
+      const targetIndex = rowIndex * targetGrid.width + columnIndex;
+      const sourceIndex = sourceRow * field.grid.width + sourceColumn;
+      values[targetIndex] = field.values[sourceIndex];
+    }
+  }
+
+  return { grid: targetGrid, values };
+}
+
+function cropComplexRows(rows: ComplexRows, targetGrid: GridSpec): ComplexRows {
+  const croppedRows: ComplexRows = [];
+
+  for (let rowIndex = 0; rowIndex < targetGrid.height; rowIndex += 1) {
+    const croppedRow = new Float32Array(targetGrid.width * 2);
+    for (let columnIndex = 0; columnIndex < targetGrid.width; columnIndex += 1) {
+      croppedRow[columnIndex * 2] = rows[rowIndex][columnIndex * 2];
+      croppedRow[columnIndex * 2 + 1] = rows[rowIndex][columnIndex * 2 + 1];
+    }
+    croppedRows.push(croppedRow);
+  }
+
+  return croppedRows;
+}
+
 function conjugateRows(rows: ComplexRows): ComplexRows {
   return rows.map((row) => {
     const conjugatedRow = new Float32Array(row.length);
@@ -206,4 +248,12 @@ function signedFrequency(index: number, size: number): number {
     return index;
   }
   return index - size;
+}
+
+function nextPowerOfTwo(value: number): number {
+  let power = 4;
+  while (power < value) {
+    power *= 2;
+  }
+  return power;
 }

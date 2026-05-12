@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { shapeAmplitudeField } from "../src/field/amplitude.js";
-import { DEFAULT_GRID } from "../src/field/grid.js";
+import { DEFAULT_GRID, createGridFromSparseness } from "../src/field/grid.js";
 import {
   densityToPoissonRadius,
   sampleSwirlCenters,
@@ -93,6 +93,7 @@ void test("poisson sampler respects minimum spacing", () => {
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
   const searchParams = new URLSearchParams({
     force: "999",
+    gridSparseness: "0",
     showHeatmap: "false",
     vectorOverlayDensity: "999",
     heatmapCellSize: "0",
@@ -105,6 +106,7 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   const parsedParameters = parseParameters(searchParams);
 
   assert.equal(parsedParameters.force, 80);
+  assert.equal(parsedParameters.gridSparseness, 1);
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 64);
   assert.equal(parsedParameters.heatmapCellSize, 1);
@@ -128,6 +130,32 @@ void test("spectral filtering normalizes noise into unit range", () => {
     assert.ok(value >= 0);
     assert.ok(value <= 1);
   }
+});
+
+void test("spectral filtering supports non-power-of-two grids", () => {
+  const random = new SeededRandom("non-power-of-two");
+  const noise = generateWhiteNoise({ width: 96, height: 72 }, random);
+  const filtered = applySpectralFilter(noise, {
+    scale: DEFAULT_PARAMETERS.magnitudeScale,
+    octaves: DEFAULT_PARAMETERS.octaves,
+    persistence: DEFAULT_PARAMETERS.persistence,
+    lacunarity: DEFAULT_PARAMETERS.lacunarity,
+  });
+
+  assert.equal(filtered.grid.width, 96);
+  assert.equal(filtered.grid.height, 72);
+  for (const value of filtered.values) {
+    assert.ok(value >= 0);
+    assert.ok(value <= 1);
+  }
+});
+
+void test("grid sparseness maps SVG units to grid dimensions", () => {
+  const denseGrid = createGridFromSparseness(960, 720, 1);
+  const sparseGrid = createGridFromSparseness(960, 720, 10);
+
+  assert.deepEqual(denseGrid, { width: 960, height: 720 });
+  assert.deepEqual(sparseGrid, { width: 96, height: 72 });
 });
 
 void test("default grid is power-of-two sized for FFT processing", () => {

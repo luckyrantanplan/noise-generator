@@ -9,7 +9,7 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { DEFAULT_GRID } from "../field/grid.js";
+import { createGridFromSparseness } from "../field/grid.js";
 import { generateVectorField } from "../field/composeField.js";
 import { parseParameters } from "../shared/params.js";
 import type { ParameterValues, RenderOptions } from "../shared/types.js";
@@ -66,8 +66,14 @@ async function routeRequest(
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
     const parameters = parseParameters(requestUrl.searchParams);
-    const field = generateVectorField(parameters, DEFAULT_GRID);
-    const svg = renderFieldSvg(field, createRenderOptions(parameters));
+    const renderOptions = createRenderOptions(parameters);
+    const grid = createGridFromSparseness(
+      renderOptions.width,
+      renderOptions.height,
+      parameters.gridSparseness,
+    );
+    const field = generateVectorField(parameters, grid);
+    const svg = renderFieldSvg(field, renderOptions);
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "no-store",

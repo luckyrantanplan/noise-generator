@@ -2,6 +2,7 @@ export interface ParameterValues {
   force: number;
   magnitudeScale: number;
   directionScale: number;
+  gridSparseness: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;
   heatmapCellSize: number;

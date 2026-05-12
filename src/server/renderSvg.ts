@@ -29,12 +29,13 @@ export function renderFieldSvg(
 ): string {
   const cellWidth = options.width / field.grid.width;
   const cellHeight = options.height / field.grid.height;
-  const maximumMagnitude = Math.max(...field.magnitude, Number.EPSILON);
+  const maximumMagnitude = getMaximumMagnitude(field);
   const heatmap = options.showHeatmap
     ? renderHeatmap(field, options, cellWidth, cellHeight, maximumMagnitude)
     : "";
   const arrows = renderArrows(field, options, maximumMagnitude);
   const swirls = renderSwirlCenters(field, options);
+  const scaleBar = renderScaleBar(options);
   const heatmapLayer = options.showHeatmap
     ? `<g shape-rendering="crispEdges">${heatmap}</g>`
     : "";
@@ -49,7 +50,20 @@ export function renderFieldSvg(
 ${heatmapLayer}
 <g stroke="#f8fafc" stroke-width="1" stroke-linecap="round" marker-end="url(#arrowhead)" opacity="0.84">${arrows}</g>
 <g fill="none" stroke="#e2e8f0" stroke-width="1" opacity="0.45">${swirls}</g>
+${scaleBar}
 </svg>`;
+}
+
+function getMaximumMagnitude(field: VectorField): number {
+  let maximumMagnitude = Number.EPSILON;
+
+  for (const magnitude of field.magnitude) {
+    if (magnitude > maximumMagnitude) {
+      maximumMagnitude = magnitude;
+    }
+  }
+
+  return maximumMagnitude;
 }
 
 function renderHeatmap(
@@ -178,6 +192,29 @@ function renderSwirlCenters(
       return `<circle cx="${formatNumber(centerX)}" cy="${formatNumber(centerY)}" r="${formatNumber(radius)}" />`;
     })
     .join("");
+}
+
+function renderScaleBar(options: RenderOptions): string {
+  const barLength = options.width * 0.5;
+  const startX = options.width * 0.08;
+  const endX = startX + barLength;
+  const midX = startX + barLength / 2;
+  const baselineY = options.height * 0.92;
+  const topTickY = baselineY - options.height * 0.012;
+  const bottomTickY = baselineY + options.height * 0.012;
+  const titleY = baselineY - options.height * 0.03;
+  const labelY = baselineY + options.height * 0.04;
+
+  return `<g fill="#f8fafc" stroke="#f8fafc" stroke-width="1.2" opacity="0.92" aria-label="Scale bar overlay">
+<line x1="${formatNumber(startX)}" y1="${formatNumber(baselineY)}" x2="${formatNumber(endX)}" y2="${formatNumber(baselineY)}" />
+<line x1="${formatNumber(startX)}" y1="${formatNumber(topTickY)}" x2="${formatNumber(startX)}" y2="${formatNumber(bottomTickY)}" />
+<line x1="${formatNumber(midX)}" y1="${formatNumber(topTickY)}" x2="${formatNumber(midX)}" y2="${formatNumber(bottomTickY)}" />
+<line x1="${formatNumber(endX)}" y1="${formatNumber(topTickY)}" x2="${formatNumber(endX)}" y2="${formatNumber(bottomTickY)}" />
+<text x="${formatNumber(startX)}" y="${formatNumber(titleY)}" font-size="7" stroke="none">Scale (SVG units)</text>
+<text x="${formatNumber(startX)}" y="${formatNumber(labelY)}" font-size="6" text-anchor="middle" stroke="none">0</text>
+<text x="${formatNumber(midX)}" y="${formatNumber(labelY)}" font-size="6" text-anchor="middle" stroke="none">${formatNumber(barLength / 2)}</text>
+<text x="${formatNumber(endX)}" y="${formatNumber(labelY)}" font-size="6" text-anchor="middle" stroke="none">${formatNumber(barLength)}</text>
+</g>`;
 }
 
 function colorAt(value: number): string {

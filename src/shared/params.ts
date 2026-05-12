@@ -34,6 +34,7 @@ export const DEFAULT_PARAMETERS: ParameterValues = {
   force: 26,
   magnitudeScale: 28,
   directionScale: 18,
+  gridSparseness: 15,
   showHeatmap: true,
   vectorOverlayDensity: 16,
   heatmapCellSize: 1,
@@ -69,6 +70,14 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     max: 80,
     step: 1,
     integer: false,
+  },
+  {
+    key: "gridSparseness",
+    label: "Grid Sparseness",
+    min: 1,
+    max: 120,
+    step: 1,
+    integer: true,
   },
   { key: "showHeatmap", label: "Show Heatmap" },
   {
