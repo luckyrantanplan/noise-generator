@@ -20,6 +20,7 @@ const exportButtonElement = requireElement("#export-binary");
 
 const currentParameters: ParameterValues = { ...DEFAULT_PARAMETERS };
 let pendingRequest = 0;
+let latestPreviewRequestAt = 0;
 
 buildControls(controlsElement, currentParameters);
 importButtonElement.addEventListener("click", () => {
@@ -319,15 +320,24 @@ function queuePreviewRefresh(parameters: ParameterValues): void {
 }
 
 async function refreshPreview(parameters: ParameterValues): Promise<void> {
+  const requestTimestamp = Date.now();
+  latestPreviewRequestAt = requestTimestamp;
   statusElement.textContent = "Rendering";
   const searchParams = serializeParameters(parameters);
   const response = await fetch(`/api/field.svg?${searchParams.toString()}`);
   if (!response.ok) {
+    if (requestTimestamp !== latestPreviewRequestAt) {
+      return;
+    }
     statusElement.textContent = "Render failed";
     previewElement.textContent = await response.text();
     return;
   }
-  previewElement.innerHTML = await response.text();
+  const svg = await response.text();
+  if (requestTimestamp !== latestPreviewRequestAt) {
+    return;
+  }
+  previewElement.innerHTML = svg;
   statusElement.textContent = "Ready";
 }
 
@@ -370,6 +380,7 @@ async function importBinary(parameters: ParameterValues): Promise<void> {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const decodedField = decodeDisplacementField(bytes);
+    // Import restores the recorded parameter set, then regenerates the preview.
     Object.assign(parameters, decodedField.metadata.parameters);
     rebuildControls(parameters);
     await refreshPreview(parameters);
