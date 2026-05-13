@@ -1,6 +1,7 @@
 import { decodeDisplacementField } from "../shared/displacementBinary.js";
 import {
   DEFAULT_PARAMETERS,
+  normalizeParameters,
   PARAMETER_DEFINITIONS,
   PARAMETER_GROUPS,
   serializeParameters,
@@ -18,7 +19,9 @@ const importButtonElement = requireElement("#import-binary");
 const importInputElement = requireElement("#import-binary-input");
 const exportButtonElement = requireElement("#export-binary");
 
-const currentParameters: ParameterValues = { ...DEFAULT_PARAMETERS };
+const currentParameters: ParameterValues = normalizeParameters({
+  ...DEFAULT_PARAMETERS,
+});
 let pendingRequest = 0;
 let latestPreviewRequestAt = 0;
 
@@ -37,9 +40,10 @@ void refreshPreview(currentParameters);
 function requireElement(selector: "#controls"): HTMLFormElement;
 function requireElement(selector: "#preview"): HTMLDivElement;
 function requireElement(selector: "#status"): HTMLSpanElement;
-function requireElement(selector: "#import-binary" | "#export-binary"): HTMLButtonElement;
+function requireElement(
+  selector: "#import-binary" | "#export-binary",
+): HTMLButtonElement;
 function requireElement(selector: "#import-binary-input"): HTMLInputElement;
- 
 
 function requireElement(selector: string): HTMLElement {
   const element = document.querySelector(selector);
@@ -203,7 +207,7 @@ function createNumericControl(
   rangeInput.name = definition.key;
   rangeInput.type = "range";
   rangeInput.min = String(definition.min);
-  rangeInput.max = String(definition.max);
+    rangeInput.max = String(definition.max);
   rangeInput.step = String(definition.step);
   rangeInput.value = String(parameters[definition.key]);
 
@@ -234,11 +238,19 @@ function createNumericControl(
       return;
     }
     parameters[definition.key] = nextValue;
-    rangeInput.value = String(nextValue);
-    valueOutput.textContent = String(nextValue);
-    if (writeBackToInput) {
-      numberInput.value = String(nextValue);
+    const normalizedChanged = syncNormalizedParameters(parameters);
+    const rebuildControlsNeeded = normalizedChanged;
+
+    if (rebuildControlsNeeded) {
+      rebuildControls(parameters);
+    } else {
+      rangeInput.value = String(parameters[definition.key]);
+      valueOutput.textContent = String(parameters[definition.key]);
+      if (writeBackToInput) {
+        numberInput.value = String(parameters[definition.key]);
+      }
     }
+
     queuePreviewRefresh(parameters);
   };
 
@@ -251,8 +263,15 @@ function createNumericControl(
       return;
     }
     parameters[definition.key] = nextValue;
-    rangeInput.value = String(nextValue);
-    valueOutput.textContent = String(nextValue);
+    const normalizedChanged = syncNormalizedParameters(parameters);
+    const rebuildControlsNeeded = normalizedChanged;
+
+    if (rebuildControlsNeeded) {
+      rebuildControls(parameters);
+    } else {
+      rangeInput.value = String(parameters[definition.key]);
+      valueOutput.textContent = String(parameters[definition.key]);
+    }
     queuePreviewRefresh(parameters);
   });
   numberInput.addEventListener("change", () => {
@@ -325,6 +344,7 @@ function queuePreviewRefresh(parameters: ParameterValues): void {
 }
 
 async function refreshPreview(parameters: ParameterValues): Promise<void> {
+  syncNormalizedParameters(parameters);
   const requestTimestamp = Date.now();
   latestPreviewRequestAt = requestTimestamp;
   statusElement.textContent = "Rendering";
@@ -386,7 +406,10 @@ async function importBinary(parameters: ParameterValues): Promise<void> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const decodedField = decodeDisplacementField(bytes);
     // Import restores the recorded parameter set, then regenerates the preview.
-    Object.assign(parameters, decodedField.metadata.parameters);
+    Object.assign(
+      parameters,
+      normalizeParameters(decodedField.metadata.parameters),
+    );
     rebuildControls(parameters);
     await refreshPreview(parameters);
   } catch (error) {
@@ -402,4 +425,39 @@ async function importBinary(parameters: ParameterValues): Promise<void> {
 function setToolbarBusy(isBusy: boolean): void {
   importButtonElement.disabled = isBusy;
   exportButtonElement.disabled = isBusy;
+}
+
+function syncNormalizedParameters(parameters: ParameterValues): boolean {
+  const normalizedParameters = normalizeParameters(parameters);
+  const changed = !parameterValuesEqual(parameters, normalizedParameters);
+
+  if (changed) {
+    Object.assign(parameters, normalizedParameters);
+  }
+
+  return changed;
+}
+
+function parameterValuesEqual(
+  left: ParameterValues,
+  right: ParameterValues,
+): boolean {
+  return (
+    left.renderWidth === right.renderWidth &&
+    left.renderHeight === right.renderHeight &&
+    left.force === right.force &&
+    left.scale === right.scale &&
+    left.gridSparseness === right.gridSparseness &&
+    left.showHeatmap === right.showHeatmap &&
+    left.vectorOverlayDensity === right.vectorOverlayDensity &&
+    left.spectralSlopeDbPerOct === right.spectralSlopeDbPerOct &&
+    left.amplitudeContrast === right.amplitudeContrast &&
+    left.swirlDensity === right.swirlDensity &&
+    left.swirlMinimumAngleDegrees === right.swirlMinimumAngleDegrees &&
+    left.swirlStrengthPercent === right.swirlStrengthPercent &&
+    left.swirlFalloff === right.swirlFalloff &&
+    left.swirlDirectionBias === right.swirlDirectionBias &&
+    left.directionNoiseMix === right.directionNoiseMix &&
+    left.randomSeed === right.randomSeed
+  );
 }

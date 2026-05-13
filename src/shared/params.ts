@@ -62,18 +62,18 @@ export type ParameterDefinition =
   | BooleanParameterDefinition
   | SeedParameterDefinition;
 
-export const MAX_FORCE = 80;
+export const MAX_FORCE = 1440;
 export const MAX_SPECTRAL_SLOPE_DB_PER_OCT = 12;
 export const MIN_CUTOFF_PERCENT = 0;
 export const MAX_CUTOFF_PERCENT = 100;
-export const MIN_SWIRL_RADIUS_PERCENT = 3;
-export const MAX_SWIRL_RADIUS_PERCENT = 45;
-export const MAX_SWIRL_STRENGTH_DEGREES = 1440;
+export const MIN_SWIRL_MINIMUM_ANGLE_DEGREES = 5;
+export const MAX_SWIRL_MINIMUM_ANGLE_DEGREES = 180;
+export const MAX_SWIRL_STRENGTH_PERCENT = 100;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   renderWidth: 960,
   renderHeight: 720,
-  force: 26,
+  force: 80,
   scale: 4.5,
   gridSparseness: 15,
   showHeatmap: true,
@@ -81,8 +81,8 @@ export const DEFAULT_PARAMETERS: ParameterValues = {
   spectralSlopeDbPerOct: 6,
   amplitudeContrast: 1,
   swirlDensity: 18,
-  swirlRadius: 18,
-  swirlStrength: 60,
+  swirlMinimumAngleDegrees: 180,
+  swirlStrengthPercent: 60,
   swirlFalloff: 2,
   swirlDirectionBias: 0.5,
   directionNoiseMix: 0.45,
@@ -117,7 +117,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "force",
     label: "Force",
     description:
-      "Scales the noise-derived displacement magnitude. Higher values strengthen the background noise contribution without stretching the geometric swirl chords.",
+      "Maximum allowed displacement magnitude in SVG units. It caps the noise contribution directly and sets the maximum swirl angle budget used by the field generator.",
     min: 0,
     max: MAX_FORCE,
     step: 1,
@@ -180,23 +180,23 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   },
   {
     group: "swirls",
-    key: "swirlRadius",
-    label: "Swirl Radius (%)",
+    key: "swirlMinimumAngleDegrees",
+    label: "Swirl Min Angle (deg)",
     description:
-      "Radius of each swirl influence as a percentage of the shorter render side. Larger values make each swirl affect a wider area.",
-    min: MIN_SWIRL_RADIUS_PERCENT,
-    max: MAX_SWIRL_RADIUS_PERCENT,
-    step: 0.5,
+      "Minimum allowable swirl angle in degrees. Higher values force smaller maximum swirl circles because Force must still bound the worst-case chord length.",
+    min: MIN_SWIRL_MINIMUM_ANGLE_DEGREES,
+    max: MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
+    step: 1,
     integer: false,
   },
   {
     group: "swirls",
-    key: "swirlStrength",
-    label: "Swirl Strength (deg)",
+    key: "swirlStrengthPercent",
+    label: "Swirl Strength (% max angle)",
     description:
-      "Peak local rotation angle in degrees for each swirl. Values near 360 perform a full turn at the strongest ring, and larger values allow several rotations.",
+      "Requested swirl intensity as a percentage of the maximum angle allowed for each sampled circle under Force. 100 means use the full force-limited angle budget of that swirl; lower values request a proportionally weaker swirl.",
     min: 0,
-    max: MAX_SWIRL_STRENGTH_DEGREES,
+    max: MAX_SWIRL_STRENGTH_PERCENT,
     step: 1,
     integer: false,
   },
@@ -284,17 +284,27 @@ export function parseParameters(
     parsedValues[definition.key] = parseNumericValue(suppliedValue, definition);
   }
 
-  return parsedValues;
+  return normalizeParameters(parsedValues);
 }
 
 export function serializeParameters(
   parameters: ParameterValues,
 ): URLSearchParams {
+  const normalizedParameters = normalizeParameters(parameters);
   const searchParams = new URLSearchParams();
   for (const definition of PARAMETER_DEFINITIONS) {
-    searchParams.set(definition.key, String(parameters[definition.key]));
+    searchParams.set(
+      definition.key,
+      String(normalizedParameters[definition.key]),
+    );
   }
   return searchParams;
+}
+
+export function normalizeParameters(
+  parameters: ParameterValues,
+): ParameterValues {
+  return normalizeBaseParameters(parameters);
 }
 
 function parseNumericValue(
@@ -320,6 +330,48 @@ function parseBooleanValue(suppliedValue: string): boolean {
     normalizedValue === "off" ||
     normalizedValue === "no"
   );
+}
+
+function normalizeBaseParameters(parameters: ParameterValues): ParameterValues {
+  const normalizedParameters: ParameterValues = {
+    ...parameters,
+    randomSeed: sanitizeSeed(
+      typeof parameters.randomSeed === "string"
+        ? parameters.randomSeed
+        : DEFAULT_PARAMETERS.randomSeed,
+    ),
+    showHeatmap:
+      typeof parameters.showHeatmap === "boolean"
+        ? parameters.showHeatmap
+        : DEFAULT_PARAMETERS.showHeatmap,
+  };
+
+  for (const definition of PARAMETER_DEFINITIONS) {
+    if (definition.key === "randomSeed" || definition.key === "showHeatmap") {
+      continue;
+    }
+
+    normalizedParameters[definition.key] = normalizeNumericValue(
+      normalizedParameters[definition.key],
+      definition,
+    );
+  }
+
+  return normalizedParameters;
+}
+
+function normalizeNumericValue(
+  suppliedValue: number,
+  definition: NumericParameterDefinition,
+): number {
+  const fallbackValue = DEFAULT_PARAMETERS[definition.key];
+  const finiteNumber = Number.isFinite(suppliedValue)
+    ? suppliedValue
+    : fallbackValue;
+  const roundedNumber = definition.integer
+    ? Math.round(finiteNumber)
+    : finiteNumber;
+  return clamp(roundedNumber, definition.min, definition.max);
 }
 
 function sanitizeSeed(seed: string): string {

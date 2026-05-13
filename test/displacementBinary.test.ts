@@ -35,3 +35,24 @@ void test("displacement binary codec preserves row-major dx dy packing", () => {
   assert.deepEqual(decoded.metadata.grid, { width: 2, height: 1 });
   assert.deepEqual(Array.from(decoded.displacements), [1, 2, 3, 4]);
 });
+
+void test("displacement binary decoder rejects version 1 payloads", () => {
+  const metadata = createDisplacementMetadata({
+    parameters: DEFAULT_PARAMETERS,
+    grid: { width: 1, height: 1 },
+    renderWidth: DEFAULT_PARAMETERS.renderWidth,
+    renderHeight: DEFAULT_PARAMETERS.renderHeight,
+  });
+  const displacements = interleaveDisplacements(
+    new Float32Array([1]),
+    new Float32Array([2]),
+  );
+  const encoded = encodeDisplacementField(metadata, displacements);
+
+  encoded[4] = 1;
+
+  assert.throws(
+    () => decodeDisplacementField(encoded),
+    /Unsupported binary displacement version: 1/,
+  );
+});

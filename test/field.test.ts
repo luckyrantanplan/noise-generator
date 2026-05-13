@@ -13,7 +13,10 @@ import {
   sampleSwirlCenters,
 } from "../src/field/poissonDisk.js";
 import { SeededRandom } from "../src/field/hashSeed.js";
-import { generateVectorField } from "../src/field/composeField.js";
+import {
+  composeWithSharedBudget,
+  generateVectorField,
+} from "../src/field/composeField.js";
 import { evaluateSwirlInfluence } from "../src/field/swirls.js";
 import {
   frequencyRadiusInLongestSideUnits,
@@ -25,10 +28,16 @@ import {
   MAX_FORCE,
   MAX_CUTOFF_PERCENT,
   MAX_SPECTRAL_SLOPE_DB_PER_OCT,
-  MAX_SWIRL_RADIUS_PERCENT,
+  MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
+  MAX_SWIRL_STRENGTH_PERCENT,
   MIN_CUTOFF_PERCENT,
   parseParameters,
 } from "../src/shared/params.js";
+import {
+  maxSwirlRadiusInWorldUnits,
+  minSwirlRadiusInWorldUnits,
+  resolveSwirlStrengthDegrees,
+} from "../src/shared/swirlBudget.js";
 import type { ScalarField } from "../src/shared/types.js";
 
 void test("seeded random values are reproducible", () => {
@@ -74,20 +83,56 @@ void test("poisson radius decreases as requested swirl density increases", () =>
   assert.ok(denseRadius < sparseRadius);
 });
 
-void test("poisson sampler respects minimum spacing", () => {
-  const density = 16;
-  const minimumDistance = densityToPoissonRadius(density);
+void test("poisson sampler returns force-derived radii across a range", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 960,
+    renderHeight: 720,
+    force: 80,
+    swirlDensity: 24,
+    swirlMinimumAngleDegrees: 180,
+    swirlStrengthPercent: 60,
+  };
+  const centers = sampleSwirlCenters(
+    {
+      grid: { width: 96, height: 48 },
+      density: parameters.swirlDensity,
+      force: parameters.force,
+      renderWidth: parameters.renderWidth,
+      renderHeight: parameters.renderHeight,
+      minimumAngleDegrees: parameters.swirlMinimumAngleDegrees,
+      strengthPercent: parameters.swirlStrengthPercent,
+      swirlFalloff: parameters.swirlFalloff,
+      directionBias: parameters.swirlDirectionBias,
+    },
+    new SeededRandom("spacing"),
+  );
+  const shortSide = Math.min(parameters.renderWidth, parameters.renderHeight);
+  const minimumRadius = minSwirlRadiusInWorldUnits(parameters) / shortSide;
+  const maximumRadius = maxSwirlRadiusInWorldUnits(parameters) / shortSide;
+
+  assert.ok(centers.length > 0);
+  assert.ok(centers.every((center) => center.radius >= minimumRadius - 1e-7));
+  assert.ok(centers.every((center) => center.radius <= maximumRadius + 1e-7));
+  assert.ok(centers.some((center) => center.radius > minimumRadius + 1e-3));
+});
+
+void test("sampled swirl supports do not overlap", () => {
   const grid = { width: 96, height: 48 };
   const metricScales = shortSideMetricScales(grid);
   const centers = sampleSwirlCenters(
     {
       grid,
-      density,
-      radius: 0.2,
-      strength: 1,
+      density: 48,
+      force: DEFAULT_PARAMETERS.force,
+      renderWidth: DEFAULT_PARAMETERS.renderWidth,
+      renderHeight: DEFAULT_PARAMETERS.renderHeight,
+      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
+      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
+      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
       directionBias: 0.5,
     },
-    new SeededRandom("spacing"),
+    new SeededRandom("non-overlap"),
   );
 
   for (let firstIndex = 0; firstIndex < centers.length; firstIndex += 1) {
@@ -102,7 +147,8 @@ void test("poisson sampler respects minimum spacing", () => {
         (firstCenter.positionX - secondCenter.positionX) * metricScales.xScale,
         (firstCenter.positionY - secondCenter.positionY) * metricScales.yScale,
       );
-      assert.ok(distance + 1e-7 >= minimumDistance);
+
+      assert.ok(distance + 1e-7 >= firstCenter.radius + secondCenter.radius);
     }
   }
 });
@@ -112,8 +158,12 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
     {
       grid: DEFAULT_GRID,
       density: 48,
-      radius: 0.2,
-      strength: 1,
+      force: DEFAULT_PARAMETERS.force,
+      renderWidth: DEFAULT_PARAMETERS.renderWidth,
+      renderHeight: DEFAULT_PARAMETERS.renderHeight,
+      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
+      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
+      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
       directionBias: 0,
     },
     new SeededRandom("bias-low"),
@@ -122,8 +172,12 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
     {
       grid: DEFAULT_GRID,
       density: 48,
-      radius: 0.2,
-      strength: 1,
+      force: DEFAULT_PARAMETERS.force,
+      renderWidth: DEFAULT_PARAMETERS.renderWidth,
+      renderHeight: DEFAULT_PARAMETERS.renderHeight,
+      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
+      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
+      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
       directionBias: 0.5,
     },
     new SeededRandom("bias-mid"),
@@ -132,8 +186,12 @@ void test("swirl direction bias controls clockwise versus counterclockwise ratio
     {
       grid: DEFAULT_GRID,
       density: 48,
-      radius: 0.2,
-      strength: 1,
+      force: DEFAULT_PARAMETERS.force,
+      renderWidth: DEFAULT_PARAMETERS.renderWidth,
+      renderHeight: DEFAULT_PARAMETERS.renderHeight,
+      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
+      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
+      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
       directionBias: 1,
     },
     new SeededRandom("bias-high"),
@@ -156,7 +214,7 @@ void test("spectral radius stays isotropic on rectangular grids", () => {
 void test("swirl influence follows chord geometry for a local rotation", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 90,
+    swirlStrengthPercent: 90,
     swirlFalloff: 1,
   };
   const field = evaluateSwirlInfluence(
@@ -166,6 +224,7 @@ void test("swirl influence follows chord geometry for a local rotation", () => {
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.5,
+        strengthDegrees: 90,
         direction: 1,
       },
     ],
@@ -182,7 +241,7 @@ void test("swirl influence follows chord geometry for a local rotation", () => {
 void test("swirl displacement is suppressed only in tiny center and edge dead zones", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 180,
+    swirlStrengthPercent: 180,
     swirlFalloff: 2,
   };
   const grid = { width: 201, height: 201 };
@@ -193,6 +252,7 @@ void test("swirl displacement is suppressed only in tiny center and edge dead zo
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.4,
+        strengthDegrees: 180,
         direction: 1,
       },
     ],
@@ -232,6 +292,7 @@ void test("swirl noise gain fades from the center to the boundary", () => {
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.4,
+        strengthDegrees: 180,
         direction: 1,
       },
     ],
@@ -242,18 +303,9 @@ void test("swirl noise gain fades from the center to the boundary", () => {
   const nearCenterIndex = indexAt(51, 50, grid);
   const midRadiusIndex = indexAt(70, 50, grid);
   const nearEdgeIndex = indexAt(89, 50, grid);
-  const nearCenterMagnitude = Math.hypot(
-    field.noiseGain[nearCenterIndex],
-    0,
-  );
-  const midRadiusMagnitude = Math.hypot(
-    field.noiseGain[midRadiusIndex],
-    0,
-  );
-  const nearEdgeMagnitude = Math.hypot(
-    field.noiseGain[nearEdgeIndex],
-    0,
-  );
+  const nearCenterMagnitude = Math.hypot(field.noiseGain[nearCenterIndex], 0);
+  const midRadiusMagnitude = Math.hypot(field.noiseGain[midRadiusIndex], 0);
+  const nearEdgeMagnitude = Math.hypot(field.noiseGain[nearEdgeIndex], 0);
 
   assert.ok(nearCenterMagnitude < 0.02);
   assert.ok(midRadiusMagnitude > nearCenterMagnitude);
@@ -263,7 +315,7 @@ void test("swirl noise gain fades from the center to the boundary", () => {
 void test("swirl displacement is periodic for full turns", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 360,
+    swirlStrengthPercent: 360,
     swirlFalloff: 1,
   };
   const field = evaluateSwirlInfluence(
@@ -273,6 +325,7 @@ void test("swirl displacement is periodic for full turns", () => {
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.5,
+        strengthDegrees: 360,
         direction: 1,
       },
     ],
@@ -288,7 +341,7 @@ void test("swirl displacement is periodic for full turns", () => {
 void test("swirl influence stays isotropic on rectangular grids", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 90,
+    swirlStrengthPercent: 90,
     swirlFalloff: 1,
   };
   const grid = { width: 33, height: 17 };
@@ -299,6 +352,7 @@ void test("swirl influence stays isotropic on rectangular grids", () => {
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.3,
+        strengthDegrees: 90,
         direction: 1,
       },
     ],
@@ -319,92 +373,22 @@ void test("swirl influence stays isotropic on rectangular grids", () => {
   assert.ok(Math.abs(horizontalMagnitude - verticalMagnitude) < 0.01);
 });
 
-void test("direction noise mix zero applies center-based noise attenuation inside swirls", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    force: 1,
-    directionNoiseMix: 0,
-    swirlDensity: 1,
-    swirlRadius: 45,
-    swirlStrength: 90,
-    swirlFalloff: 1,
-    randomSeed: "pure-swirl",
-  };
-  const grid = { width: 9, height: 9 };
-  const generatedField = generateVectorField(parameters, grid);
-  const noiseOnlyField = generateVectorField(
-    {
-      ...parameters,
-      swirlDensity: 0,
-    },
-    grid,
-  );
-  const swirlField = evaluateSwirlInfluence(
-    grid,
-    generatedField.swirls,
-    parameters,
-  );
+void test("shared budget allocator preserves subcritical requested vectors", () => {
+  const composed = composeWithSharedBudget(18, 0, 12, 0, 40);
 
-  for (let index = 0; index < generatedField.displacementX.length; index += 1) {
-    assert.ok(
-      Math.abs(
-        generatedField.displacementX[index] -
-          (swirlField.vectorX[index] * parameters.renderWidth +
-            noiseOnlyField.displacementX[index] * swirlField.noiseGain[index]),
-      ) < 5e-5,
-    );
-    assert.ok(
-      Math.abs(
-        generatedField.displacementY[index] -
-          (swirlField.vectorY[index] * parameters.renderHeight +
-            noiseOnlyField.displacementY[index] * swirlField.noiseGain[index]),
-      ) < 2e-5,
-    );
-  }
+  assert.ok(Math.abs(composed.x - 30) < 1e-9);
+  assert.ok(Math.abs(composed.y) < 1e-9);
 });
 
-void test("direction noise mix one leaves the noise term unattenuated", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    force: 1,
-    directionNoiseMix: 1,
-    swirlDensity: 1,
-    swirlRadius: 45,
-    swirlStrength: 90,
-    swirlFalloff: 1,
-    randomSeed: "full-noise-swirl",
-  };
-  const grid = { width: 9, height: 9 };
-  const generatedField = generateVectorField(parameters, grid);
-  const noiseOnlyField = generateVectorField(
-    {
-      ...parameters,
-      swirlDensity: 0,
-    },
-    grid,
-  );
-  const swirlField = evaluateSwirlInfluence(
-    grid,
-    generatedField.swirls,
-    parameters,
-  );
+void test("shared budget allocator blends toward a swirl-heavy ratio under overload", () => {
+  const composed = composeWithSharedBudget(35, 0, 0, 25, 40);
+  const requestedShare = 35 / (35 + 25);
+  const overload = (Math.hypot(35, 25) - 40) / 40;
+  const swirlShare = requestedShare + (0.6 - requestedShare) * overload;
+  const noiseShare = 1 - swirlShare;
 
-  for (let index = 0; index < generatedField.displacementX.length; index += 1) {
-    assert.ok(
-      Math.abs(
-        generatedField.displacementX[index] -
-          (swirlField.vectorX[index] * parameters.renderWidth +
-            noiseOnlyField.displacementX[index]),
-      ) < 5e-5,
-    );
-    assert.ok(
-      Math.abs(
-        generatedField.displacementY[index] -
-          (swirlField.vectorY[index] * parameters.renderHeight +
-            noiseOnlyField.displacementY[index]),
-      ) < 5e-5,
-    );
-  }
+  assert.ok(Math.abs(composed.x - swirlShare * 40) < 1e-9);
+  assert.ok(Math.abs(composed.y - noiseShare * 40) < 1e-9);
 });
 
 void test("swirl displacement stays isotropic on wide render sizes", () => {
@@ -412,7 +396,7 @@ void test("swirl displacement stays isotropic on wide render sizes", () => {
     ...DEFAULT_PARAMETERS,
     renderWidth: 1600,
     renderHeight: 400,
-    swirlStrength: 90,
+    swirlStrengthPercent: 90,
     swirlFalloff: 1,
   };
   const grid = { width: 33, height: 17 };
@@ -423,6 +407,7 @@ void test("swirl displacement stays isotropic on wide render sizes", () => {
         positionX: 0.5,
         positionY: 0.5,
         radius: 0.3,
+        strengthDegrees: 90,
         direction: 1,
       },
     ],
@@ -482,61 +467,41 @@ void test("force still scales the noise contribution outside swirl support", () 
   assert.ok(changedCount > 0);
 });
 
-void test("force does not scale the swirl contribution itself", () => {
-  const baseParameters = {
+void test("force-resolved swirl angle shrinks as radius grows", () => {
+  const parameters = {
     ...DEFAULT_PARAMETERS,
-    directionNoiseMix: 1,
-    swirlDensity: 1,
-    swirlRadius: 45,
-    swirlStrength: 90,
+    force: 40,
+    renderWidth: 960,
+    renderHeight: 720,
+    swirlMinimumAngleDegrees: 180,
+    swirlStrengthPercent: 100,
     swirlFalloff: 1,
-    randomSeed: "force-invariant-swirl",
   };
-  const grid = { width: 9, height: 9 };
-  const lowForceField = generateVectorField(
-    {
-      ...baseParameters,
-      force: 1,
-    },
-    grid,
-  );
-  const highForceField = generateVectorField(
-    {
-      ...baseParameters,
-      force: 7,
-    },
-    grid,
-  );
-  const lowNoiseOnlyField = generateVectorField(
-    {
-      ...baseParameters,
-      force: 1,
-      swirlDensity: 0,
-    },
-    grid,
-  );
-  const highNoiseOnlyField = generateVectorField(
-    {
-      ...baseParameters,
-      force: 7,
-      swirlDensity: 0,
-    },
-    grid,
-  );
+  const largeRadiusAngle = resolveSwirlStrengthDegrees(parameters, 40);
+  const compactRadiusAngle = resolveSwirlStrengthDegrees(parameters, 20);
 
-  for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
-    assert.ok(
-      Math.abs(
-        (lowForceField.displacementX[index] - lowNoiseOnlyField.displacementX[index]) -
-          (highForceField.displacementX[index] - highNoiseOnlyField.displacementX[index]),
-      ) < 5e-5,
-    );
-    assert.ok(
-      Math.abs(
-        (lowForceField.displacementY[index] - lowNoiseOnlyField.displacementY[index]) -
-          (highForceField.displacementY[index] - highNoiseOnlyField.displacementY[index]),
-      ) < 5e-5,
-    );
+  assert.ok(largeRadiusAngle > 0);
+  assert.ok(largeRadiusAngle < compactRadiusAngle);
+});
+
+void test("generated field magnitudes stay within force", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    force: 40,
+    swirlDensity: 18,
+    swirlMinimumAngleDegrees: 180,
+    swirlStrengthPercent: 100,
+    swirlFalloff: 1.5,
+    directionNoiseMix: 1,
+    randomSeed: "force-cap-field",
+  };
+  const generatedField = generateVectorField(parameters, {
+    width: 33,
+    height: 25,
+  });
+
+  for (const value of generatedField.magnitude) {
+    assert.ok(value <= parameters.force + 1e-5);
   }
 });
 
@@ -544,13 +509,14 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   const searchParams = new URLSearchParams({
     renderWidth: "99999",
     renderHeight: "0",
-    force: "999",
+    force: "99999",
     scale: "999",
     gridSparseness: "0",
     spectralSlopeDbPerOct: "999",
     showHeatmap: "false",
     vectorOverlayDensity: "999",
-    swirlRadius: "999",
+    swirlMinimumAngleDegrees: "999",
+    swirlStrengthPercent: "99999",
     swirlDirectionBias: "999",
     randomSeed: "  tuned-seed  ",
   });
@@ -568,7 +534,11 @@ void test("parameter parsing clamps numeric values and preserves a seed", () => 
   );
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 64);
-  assert.equal(parsedParameters.swirlRadius, MAX_SWIRL_RADIUS_PERCENT);
+  assert.equal(
+    parsedParameters.swirlMinimumAngleDegrees,
+    MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
+  );
+  assert.equal(parsedParameters.swirlStrengthPercent, MAX_SWIRL_STRENGTH_PERCENT);
   assert.equal(parsedParameters.swirlDirectionBias, 1);
   assert.equal(parsedParameters.randomSeed, "tuned-seed");
 });
@@ -599,7 +569,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   assert.equal(filtered.grid.height, 72);
   for (const value of filtered.values) {
     assert.ok(value >= 0);
-      assert.ok(value <= 1);
+    assert.ok(value <= 1);
   }
 });
 

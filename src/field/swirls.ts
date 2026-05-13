@@ -3,6 +3,7 @@ import type {
   ParameterValues,
   SwirlCenter,
 } from "../shared/types.js";
+import { swirlAngleEnvelope } from "../shared/swirlBudget.js";
 import {
   indexAt,
   normalizedCoordinate,
@@ -16,9 +17,6 @@ export interface SwirlInfluenceField {
   noiseGain: Float32Array;
 }
 
-const CENTER_DEAD_ZONE_RADIUS = 0.02;
-const CENTER_FULL_STRENGTH_RADIUS = 0.06;
-const EDGE_TRANSITION_START = 0.9;
 const DEGREES_TO_RADIANS = Math.PI / 180;
 
 export function evaluateSwirlInfluence(
@@ -89,7 +87,7 @@ function accumulateSwirlsAtPoint(
 
     const rotationAngle =
       swirl.direction *
-      parameters.swirlStrength *
+      swirl.strengthDegrees *
       DEGREES_TO_RADIANS *
       angleEnvelope;
     const chord = rotateOffsetByAngle(
@@ -103,20 +101,6 @@ function accumulateSwirlsAtPoint(
     weight[scalarIndex] += angleEnvelope;
   }
 }
-
-function swirlAngleEnvelope(
-  normalizedDistance: number,
-  swirlFalloff: number,
-): number {
-  const innerGain = smoothstep(
-    CENTER_DEAD_ZONE_RADIUS,
-    CENTER_FULL_STRENGTH_RADIUS,
-    normalizedDistance,
-  );
-  const edgeBase = 1 - smoothstep(EDGE_TRANSITION_START, 1, normalizedDistance);
-  return innerGain * Math.pow(Math.max(0, edgeBase), swirlFalloff);
-}
-
 function centerNoiseGain(normalizedDistance: number): number {
   return smoothstep(0, 1, normalizedDistance);
 }

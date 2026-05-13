@@ -9,8 +9,8 @@ export interface ParameterValues {
   spectralSlopeDbPerOct: number;
   amplitudeContrast: number;
   swirlDensity: number;
-  swirlRadius: number;
-  swirlStrength: number;
+  swirlMinimumAngleDegrees: number;
+  swirlStrengthPercent: number;
   swirlFalloff: number;
   swirlDirectionBias: number;
   directionNoiseMix: number;
@@ -31,6 +31,7 @@ export interface SwirlCenter {
   positionX: number;
   positionY: number;
   radius: number;
+  strengthDegrees: number;
   direction: -1 | 1;
 }
 

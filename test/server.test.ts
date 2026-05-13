@@ -39,14 +39,14 @@ void test("field endpoint returns generated SVG", async () => {
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=60&showHeatmap=false`,
     );
     const highForceSvg = await highForceResponse.text();
+    const wideSwirlResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlMinimumAngleDegrees=30`,
+    );
+    const wideSwirlSvg = await wideSwirlResponse.text();
     const tightSwirlResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlRadius=5`,
+      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlMinimumAngleDegrees=180`,
     );
     const tightSwirlSvg = await tightSwirlResponse.text();
-    const broadSwirlResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlRadius=30`,
-    );
-    const broadSwirlSvg = await broadSwirlResponse.text();
     const vectorOnlyResponse = await fetch(
       `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&showHeatmap=false`,
     );
@@ -67,8 +67,8 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(coarseGridResponse.status, 200);
     assert.equal(lowForceResponse.status, 200);
     assert.equal(highForceResponse.status, 200);
+    assert.equal(wideSwirlResponse.status, 200);
     assert.equal(tightSwirlResponse.status, 200);
-    assert.equal(broadSwirlResponse.status, 200);
     assert.equal(vectorOnlyResponse.status, 200);
     assert.equal(customSizeResponse.status, 200);
     assert.equal(binaryResponse.status, 200);
@@ -89,7 +89,7 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(countSvgTag(denseGridSvg, "rect"), 96 * 72 + 1);
     assert.equal(countSvgTag(coarseGridSvg, "rect"), 48 * 36 + 1);
     assert.notEqual(lowForceSvg, highForceSvg);
-    assert.notEqual(tightSwirlSvg, broadSwirlSvg);
+    assert.notEqual(wideSwirlSvg, tightSwirlSvg);
     assert.equal(countSvgTag(vectorOnlySvg, "line") > 0, true);
     assert.equal(countSvgTag(vectorOnlySvg, "rect"), 1);
     assert.match(vectorOnlySvg, /Scale \(SVG units\)/);

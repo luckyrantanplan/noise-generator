@@ -71,8 +71,7 @@ async function routeRequest(
 
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
-    const { field, renderOptions } =
-      generateFieldResponseData(requestUrl);
+    const { field, renderOptions } = generateFieldResponseData(requestUrl);
     const svg = renderFieldSvg(field, renderOptions);
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",

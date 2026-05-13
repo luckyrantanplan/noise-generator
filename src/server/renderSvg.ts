@@ -1,8 +1,5 @@
-import { MAX_FORCE } from "../shared/params.js";
 import type { RenderOptions, VectorField } from "../shared/types.js";
 import { indexAt, normalizedCoordinate } from "../field/grid.js";
-
-const MAX_RENDER_MAGNITUDE = MAX_FORCE;
 
 interface ColorStop {
   value: number;
@@ -22,10 +19,11 @@ export function renderFieldSvg(
   field: VectorField,
   options: RenderOptions,
 ): string {
+  const maximumMagnitude = maxDisplayedMagnitude(field);
   const cellWidth = options.width / field.grid.width;
   const cellHeight = options.height / field.grid.height;
   const heatmap = options.showHeatmap
-    ? renderHeatmap(field, cellWidth, cellHeight)
+    ? renderHeatmap(field, cellWidth, cellHeight, maximumMagnitude)
     : "";
   const arrows = renderArrows(field, options);
   const swirls = renderSwirlCenters(field, options);
@@ -52,6 +50,7 @@ function renderHeatmap(
   field: VectorField,
   cellWidth: number,
   cellHeight: number,
+  maximumMagnitude: number,
 ): string {
   const fragments: string[] = [];
   for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
@@ -62,7 +61,7 @@ function renderHeatmap(
     ) {
       const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
       const color = colorAt(
-        displayMagnitudeRatio(field.magnitude[scalarIndex]),
+        displayMagnitudeRatio(field.magnitude[scalarIndex], maximumMagnitude),
       );
       const positionX = columnIndex * cellWidth;
       const positionY = rowIndex * cellHeight;
@@ -174,8 +173,23 @@ function colorAt(value: number): string {
   return `rgb(${String(red)} ${String(green)} ${String(blue)})`;
 }
 
-function displayMagnitudeRatio(magnitude: number): number {
-  return Math.min(1, Math.max(0, magnitude / MAX_RENDER_MAGNITUDE));
+function displayMagnitudeRatio(
+  magnitude: number,
+  maximumMagnitude: number,
+): number {
+  return Math.min(1, Math.max(0, magnitude / maximumMagnitude));
+}
+
+function maxDisplayedMagnitude(field: VectorField): number {
+  let maximumMagnitude = 1;
+
+  for (const magnitude of field.magnitude) {
+    if (magnitude > maximumMagnitude) {
+      maximumMagnitude = magnitude;
+    }
+  }
+
+  return maximumMagnitude;
 }
 
 function formatNumber(value: number): string {
