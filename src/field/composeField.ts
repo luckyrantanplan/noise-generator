@@ -63,14 +63,13 @@ export function generateVectorField(
       swirlInfluence.vectorX[index] * parameters.renderWidth;
     const swirlDisplacementY =
       swirlInfluence.vectorY[index] * parameters.renderHeight;
-    const noiseMix = parameters.directionNoiseMix;
-    const swirlMix = 1 - noiseMix;
-    const hasSwirlInfluence = swirlInfluence.weight[index] > 1e-6 ? 1 : 0;
-    const localNoiseMix = 1 - hasSwirlInfluence * swirlMix;
+    const noiseGain =
+      parameters.directionNoiseMix +
+      (1 - parameters.directionNoiseMix) * swirlInfluence.noiseGain[index];
     const combinedX =
-      noiseDisplacementX * localNoiseMix + swirlDisplacementX * swirlMix;
+      swirlDisplacementX + noiseDisplacementX * noiseGain;
     const combinedY =
-      noiseDisplacementY * localNoiseMix + swirlDisplacementY * swirlMix;
+      swirlDisplacementY + noiseDisplacementY * noiseGain;
 
     direction[index] = Math.atan2(combinedY, combinedX);
     displacementX[index] = combinedX;

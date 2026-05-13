@@ -156,7 +156,7 @@ void test("spectral radius stays isotropic on rectangular grids", () => {
 void test("swirl influence follows chord geometry for a local rotation", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: Math.PI / 2,
+    swirlStrength: 90,
     swirlFalloff: 1,
   };
   const field = evaluateSwirlInfluence(
@@ -179,13 +179,13 @@ void test("swirl influence follows chord geometry for a local rotation", () => {
   assert.ok(Math.abs(field.vectorY[pointIndex] - 0.25) < 1e-6);
 });
 
-void test("swirl displacement peaks between center and edge", () => {
+void test("swirl displacement is suppressed only in tiny center and edge dead zones", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: Math.PI,
+    swirlStrength: 180,
     swirlFalloff: 2,
   };
-  const grid = { width: 101, height: 101 };
+  const grid = { width: 201, height: 201 };
   const field = evaluateSwirlInfluence(
     grid,
     [
@@ -199,30 +199,71 @@ void test("swirl displacement peaks between center and edge", () => {
     parameters,
   );
 
-  const nearCenterIndex = indexAt(51, 50, grid);
-  const midRingIndex = indexAt(70, 50, grid);
-  const nearEdgeIndex = indexAt(89, 50, grid);
-  const nearCenterMagnitude = Math.hypot(
-    field.vectorX[nearCenterIndex],
-    field.vectorY[nearCenterIndex],
+  const centerDeadZoneIndex = indexAt(101, 100, grid);
+  const interiorIndex = indexAt(112, 100, grid);
+  const edgeInteriorIndex = indexAt(172, 100, grid);
+  const edgeDeadZoneIndex = indexAt(179, 100, grid);
+  const centerDeadZoneMagnitude = Math.hypot(
+    field.vectorX[centerDeadZoneIndex],
+    field.vectorY[centerDeadZoneIndex],
   );
-  const midRingMagnitude = Math.hypot(
-    field.vectorX[midRingIndex],
-    field.vectorY[midRingIndex],
+  const interiorMagnitude = Math.hypot(
+    field.vectorX[interiorIndex],
+    field.vectorY[interiorIndex],
   );
-  const nearEdgeMagnitude = Math.hypot(
-    field.vectorX[nearEdgeIndex],
-    field.vectorY[nearEdgeIndex],
+  const edgeInteriorMagnitude = Math.hypot(
+    field.vectorX[edgeInteriorIndex],
+    field.vectorY[edgeInteriorIndex],
+  );
+  const edgeDeadZoneMagnitude = Math.hypot(
+    field.vectorX[edgeDeadZoneIndex],
+    field.vectorY[edgeDeadZoneIndex],
   );
 
-  assert.ok(midRingMagnitude > nearCenterMagnitude * 20);
-  assert.ok(midRingMagnitude > nearEdgeMagnitude * 20);
+  assert.ok(interiorMagnitude > centerDeadZoneMagnitude * 20);
+  assert.ok(edgeInteriorMagnitude > edgeDeadZoneMagnitude * 20);
+});
+
+void test("swirl noise gain fades from the center to the boundary", () => {
+  const field = evaluateSwirlInfluence(
+    { width: 101, height: 101 },
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.4,
+        direction: 1,
+      },
+    ],
+    DEFAULT_PARAMETERS,
+  );
+
+  const grid = { width: 101, height: 101 };
+  const nearCenterIndex = indexAt(51, 50, grid);
+  const midRadiusIndex = indexAt(70, 50, grid);
+  const nearEdgeIndex = indexAt(89, 50, grid);
+  const nearCenterMagnitude = Math.hypot(
+    field.noiseGain[nearCenterIndex],
+    0,
+  );
+  const midRadiusMagnitude = Math.hypot(
+    field.noiseGain[midRadiusIndex],
+    0,
+  );
+  const nearEdgeMagnitude = Math.hypot(
+    field.noiseGain[nearEdgeIndex],
+    0,
+  );
+
+  assert.ok(nearCenterMagnitude < 0.02);
+  assert.ok(midRadiusMagnitude > nearCenterMagnitude);
+  assert.ok(nearEdgeMagnitude > 0.95);
 });
 
 void test("swirl displacement is periodic for full turns", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: Math.PI * 2,
+    swirlStrength: 360,
     swirlFalloff: 1,
   };
   const field = evaluateSwirlInfluence(
@@ -247,7 +288,7 @@ void test("swirl displacement is periodic for full turns", () => {
 void test("swirl influence stays isotropic on rectangular grids", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: Math.PI / 2,
+    swirlStrength: 90,
     swirlFalloff: 1,
   };
   const grid = { width: 33, height: 17 };
@@ -278,14 +319,14 @@ void test("swirl influence stays isotropic on rectangular grids", () => {
   assert.ok(Math.abs(horizontalMagnitude - verticalMagnitude) < 0.01);
 });
 
-void test("direction noise mix zero keeps full swirl chords and preserves background noise", () => {
+void test("direction noise mix zero applies center-based noise attenuation inside swirls", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
     force: 1,
     directionNoiseMix: 0,
     swirlDensity: 1,
     swirlRadius: 45,
-    swirlStrength: Math.PI / 2,
+    swirlStrength: 90,
     swirlFalloff: 1,
     randomSeed: "pure-swirl",
   };
@@ -303,53 +344,151 @@ void test("direction noise mix zero keeps full swirl chords and preserves backgr
     generatedField.swirls,
     parameters,
   );
-  let outsideSupportCount = 0;
-  let insideSupportCount = 0;
 
   for (let index = 0; index < generatedField.displacementX.length; index += 1) {
-    if (swirlField.weight[index] > 1e-6) {
-      insideSupportCount += 1;
-      assert.ok(
-        Math.abs(
-          generatedField.displacementX[index] -
-            swirlField.vectorX[index] * parameters.renderWidth,
-        ) < 2e-5,
-      );
-      assert.ok(
-        Math.abs(
-          generatedField.displacementY[index] -
-            swirlField.vectorY[index] * parameters.renderHeight,
-        ) < 2e-5,
-      );
-      continue;
-    }
-
-    outsideSupportCount += 1;
     assert.ok(
       Math.abs(
         generatedField.displacementX[index] -
-          noiseOnlyField.displacementX[index],
-      ) < 1e-6,
+          (swirlField.vectorX[index] * parameters.renderWidth +
+            noiseOnlyField.displacementX[index] * swirlField.noiseGain[index]),
+      ) < 5e-5,
     );
     assert.ok(
       Math.abs(
         generatedField.displacementY[index] -
-          noiseOnlyField.displacementY[index],
-      ) < 1e-6,
+          (swirlField.vectorY[index] * parameters.renderHeight +
+            noiseOnlyField.displacementY[index] * swirlField.noiseGain[index]),
+      ) < 2e-5,
     );
   }
-
-  assert.ok(outsideSupportCount > 0);
-  assert.ok(insideSupportCount > 0);
 });
 
-void test("force does not scale swirl chord length", () => {
-  const baseParameters = {
+void test("direction noise mix one leaves the noise term unattenuated", () => {
+  const parameters = {
     ...DEFAULT_PARAMETERS,
-    directionNoiseMix: 0,
+    force: 1,
+    directionNoiseMix: 1,
     swirlDensity: 1,
     swirlRadius: 45,
-    swirlStrength: Math.PI / 2,
+    swirlStrength: 90,
+    swirlFalloff: 1,
+    randomSeed: "full-noise-swirl",
+  };
+  const grid = { width: 9, height: 9 };
+  const generatedField = generateVectorField(parameters, grid);
+  const noiseOnlyField = generateVectorField(
+    {
+      ...parameters,
+      swirlDensity: 0,
+    },
+    grid,
+  );
+  const swirlField = evaluateSwirlInfluence(
+    grid,
+    generatedField.swirls,
+    parameters,
+  );
+
+  for (let index = 0; index < generatedField.displacementX.length; index += 1) {
+    assert.ok(
+      Math.abs(
+        generatedField.displacementX[index] -
+          (swirlField.vectorX[index] * parameters.renderWidth +
+            noiseOnlyField.displacementX[index]),
+      ) < 5e-5,
+    );
+    assert.ok(
+      Math.abs(
+        generatedField.displacementY[index] -
+          (swirlField.vectorY[index] * parameters.renderHeight +
+            noiseOnlyField.displacementY[index]),
+      ) < 5e-5,
+    );
+  }
+});
+
+void test("swirl displacement stays isotropic on wide render sizes", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 1600,
+    renderHeight: 400,
+    swirlStrength: 90,
+    swirlFalloff: 1,
+  };
+  const grid = { width: 33, height: 17 };
+  const field = evaluateSwirlInfluence(
+    grid,
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.3,
+        direction: 1,
+      },
+    ],
+    parameters,
+  );
+  const horizontalIndex = indexAt(18, 8, grid);
+  const verticalIndex = indexAt(16, 10, grid);
+  const horizontalMagnitude = Math.hypot(
+    field.vectorX[horizontalIndex] * parameters.renderWidth,
+    field.vectorY[horizontalIndex] * parameters.renderHeight,
+  );
+  const verticalMagnitude = Math.hypot(
+    field.vectorX[verticalIndex] * parameters.renderWidth,
+    field.vectorY[verticalIndex] * parameters.renderHeight,
+  );
+
+  assert.ok(
+    Math.abs(horizontalMagnitude - verticalMagnitude) /
+      Math.max(horizontalMagnitude, verticalMagnitude) <
+      0.04,
+  );
+});
+
+void test("force still scales the noise contribution outside swirl support", () => {
+  const lowForceField = generateVectorField(
+    {
+      ...DEFAULT_PARAMETERS,
+      force: 5,
+      swirlDensity: 0,
+      randomSeed: "noise-force",
+    },
+    { width: 9, height: 9 },
+  );
+  const highForceField = generateVectorField(
+    {
+      ...DEFAULT_PARAMETERS,
+      force: 15,
+      swirlDensity: 0,
+      randomSeed: "noise-force",
+    },
+    { width: 9, height: 9 },
+  );
+
+  let changedCount = 0;
+  for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
+    const deltaX = Math.abs(
+      lowForceField.displacementX[index] - highForceField.displacementX[index],
+    );
+    const deltaY = Math.abs(
+      lowForceField.displacementY[index] - highForceField.displacementY[index],
+    );
+    if (deltaX > 1e-6 || deltaY > 1e-6) {
+      changedCount += 1;
+    }
+  }
+
+  assert.ok(changedCount > 0);
+});
+
+void test("force does not scale the swirl contribution itself", () => {
+  const baseParameters = {
+    ...DEFAULT_PARAMETERS,
+    directionNoiseMix: 1,
+    swirlDensity: 1,
+    swirlRadius: 45,
+    swirlStrength: 90,
     swirlFalloff: 1,
     randomSeed: "force-invariant-swirl",
   };
@@ -368,33 +507,37 @@ void test("force does not scale swirl chord length", () => {
     },
     grid,
   );
-  const swirlField = evaluateSwirlInfluence(grid, lowForceField.swirls, {
-    ...baseParameters,
-    force: 1,
-  });
-  let insideSupportCount = 0;
+  const lowNoiseOnlyField = generateVectorField(
+    {
+      ...baseParameters,
+      force: 1,
+      swirlDensity: 0,
+    },
+    grid,
+  );
+  const highNoiseOnlyField = generateVectorField(
+    {
+      ...baseParameters,
+      force: 7,
+      swirlDensity: 0,
+    },
+    grid,
+  );
 
   for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
-    if (swirlField.weight[index] <= 1e-6) {
-      continue;
-    }
-
-    insideSupportCount += 1;
     assert.ok(
       Math.abs(
-        lowForceField.displacementX[index] -
-          highForceField.displacementX[index],
-      ) < 2e-5,
+        (lowForceField.displacementX[index] - lowNoiseOnlyField.displacementX[index]) -
+          (highForceField.displacementX[index] - highNoiseOnlyField.displacementX[index]),
+      ) < 5e-5,
     );
     assert.ok(
       Math.abs(
-        lowForceField.displacementY[index] -
-          highForceField.displacementY[index],
-      ) < 2e-5,
+        (lowForceField.displacementY[index] - lowNoiseOnlyField.displacementY[index]) -
+          (highForceField.displacementY[index] - highNoiseOnlyField.displacementY[index]),
+      ) < 5e-5,
     );
   }
-
-  assert.ok(insideSupportCount > 0);
 });
 
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
@@ -456,7 +599,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   assert.equal(filtered.grid.height, 72);
   for (const value of filtered.values) {
     assert.ok(value >= 0);
-    assert.ok(value <= 1);
+      assert.ok(value <= 1);
   }
 });
 
@@ -531,5 +674,5 @@ function measureFieldRoughness(field: ScalarField): number {
     }
   }
 
-  return differenceTotal / comparisonCount;
+  return comparisonCount === 0 ? 0 : differenceTotal / comparisonCount;
 }

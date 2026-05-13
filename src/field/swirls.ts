@@ -13,7 +13,13 @@ export interface SwirlInfluenceField {
   vectorX: Float32Array;
   vectorY: Float32Array;
   weight: Float32Array;
+  noiseGain: Float32Array;
 }
+
+const CENTER_DEAD_ZONE_RADIUS = 0.02;
+const CENTER_FULL_STRENGTH_RADIUS = 0.06;
+const EDGE_TRANSITION_START = 0.9;
+const DEGREES_TO_RADIANS = Math.PI / 180;
 
 export function evaluateSwirlInfluence(
   grid: GridSpec,
@@ -24,6 +30,8 @@ export function evaluateSwirlInfluence(
   const vectorX = new Float32Array(grid.width * grid.height);
   const vectorY = new Float32Array(grid.width * grid.height);
   const weight = new Float32Array(grid.width * grid.height);
+  const noiseGain = new Float32Array(grid.width * grid.height);
+  noiseGain.fill(1);
 
   for (let rowIndex = 0; rowIndex < grid.height; rowIndex += 1) {
     const positionY = normalizedCoordinate(rowIndex, grid.height);
@@ -40,11 +48,12 @@ export function evaluateSwirlInfluence(
         vectorX,
         vectorY,
         weight,
+        noiseGain,
       );
     }
   }
 
-  return { vectorX, vectorY, weight };
+  return { vectorX, vectorY, weight, noiseGain };
 }
 
 function accumulateSwirlsAtPoint(
@@ -57,6 +66,7 @@ function accumulateSwirlsAtPoint(
   vectorX: Float32Array,
   vectorY: Float32Array,
   weight: Float32Array,
+  noiseGain: Float32Array,
 ): void {
   for (const swirl of swirls) {
     const physicalDeltaX = (positionX - swirl.positionX) * metricScales.xScale;
@@ -67,12 +77,21 @@ function accumulateSwirlsAtPoint(
     }
 
     const normalizedDistance = distance / swirl.radius;
-    const angleEnvelope = radialAngleEnvelope(
+    const angleEnvelope = swirlAngleEnvelope(
       normalizedDistance,
       parameters.swirlFalloff,
     );
+    const localNoiseGain = centerNoiseGain(normalizedDistance);
+    noiseGain[scalarIndex] = Math.min(noiseGain[scalarIndex], localNoiseGain);
+    if (angleEnvelope <= 1e-6) {
+      continue;
+    }
+
     const rotationAngle =
-      swirl.direction * parameters.swirlStrength * angleEnvelope;
+      swirl.direction *
+      parameters.swirlStrength *
+      DEGREES_TO_RADIANS *
+      angleEnvelope;
     const chord = rotateOffsetByAngle(
       physicalDeltaX,
       physicalDeltaY,
@@ -85,12 +104,33 @@ function accumulateSwirlsAtPoint(
   }
 }
 
-function radialAngleEnvelope(
+function swirlAngleEnvelope(
   normalizedDistance: number,
   swirlFalloff: number,
 ): number {
-  const bell = Math.sin(normalizedDistance * Math.PI);
-  return Math.pow(Math.max(0, bell), swirlFalloff);
+  const innerGain = smoothstep(
+    CENTER_DEAD_ZONE_RADIUS,
+    CENTER_FULL_STRENGTH_RADIUS,
+    normalizedDistance,
+  );
+  const edgeBase = 1 - smoothstep(EDGE_TRANSITION_START, 1, normalizedDistance);
+  return innerGain * Math.pow(Math.max(0, edgeBase), swirlFalloff);
+}
+
+function centerNoiseGain(normalizedDistance: number): number {
+  return smoothstep(0, 1, normalizedDistance);
+}
+
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  if (value <= edge0) {
+    return 0;
+  }
+  if (value >= edge1) {
+    return 1;
+  }
+
+  const normalizedValue = (value - edge0) / (edge1 - edge0);
+  return normalizedValue * normalizedValue * (3 - 2 * normalizedValue);
 }
 
 function rotateOffsetByAngle(

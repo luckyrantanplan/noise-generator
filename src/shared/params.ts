@@ -68,7 +68,7 @@ export const MIN_CUTOFF_PERCENT = 0;
 export const MAX_CUTOFF_PERCENT = 100;
 export const MIN_SWIRL_RADIUS_PERCENT = 3;
 export const MAX_SWIRL_RADIUS_PERCENT = 45;
-export const MAX_SWIRL_STRENGTH = Math.PI * 8;
+export const MAX_SWIRL_STRENGTH_DEGREES = 1440;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   renderWidth: 960,
@@ -82,7 +82,7 @@ export const DEFAULT_PARAMETERS: ParameterValues = {
   amplitudeContrast: 1,
   swirlDensity: 18,
   swirlRadius: 18,
-  swirlStrength: 1,
+  swirlStrength: 60,
   swirlFalloff: 2,
   swirlDirectionBias: 0.5,
   directionNoiseMix: 0.45,
@@ -117,7 +117,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "force",
     label: "Force",
     description:
-      "Scales the final displacement magnitude. Higher values produce longer arrows and a more intense field.",
+      "Scales the noise-derived displacement magnitude. Higher values strengthen the background noise contribution without stretching the geometric swirl chords.",
     min: 0,
     max: MAX_FORCE,
     step: 1,
@@ -161,7 +161,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "directionNoiseMix",
     label: "Direction Noise Mix",
     description:
-      "Controls how much swirl displacement is added on top of the noise-derived displacement field. Higher values keep more of the noise-only result; lower values let swirl rotations dominate.",
+      "Controls how strongly noise is attenuated near swirl centers. At 0, the noise fades radially to 0 at the center of each swirl; at 1, the noise keeps full strength everywhere while the swirl displacement is still added.",
     min: 0,
     max: 1,
     step: 0.01,
@@ -192,12 +192,12 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   {
     group: "swirls",
     key: "swirlStrength",
-    label: "Swirl Strength (rad)",
+    label: "Swirl Strength (deg)",
     description:
-      "Peak local rotation angle in radians for each swirl. Values near 2π perform a full turn at the strongest ring, and larger values allow several rotations.",
+      "Peak local rotation angle in degrees for each swirl. Values near 360 perform a full turn at the strongest ring, and larger values allow several rotations.",
     min: 0,
-    max: MAX_SWIRL_STRENGTH,
-    step: 0.05,
+    max: MAX_SWIRL_STRENGTH_DEGREES,
+    step: 1,
     integer: false,
   },
   {
@@ -205,7 +205,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "swirlFalloff",
     label: "Swirl Falloff",
     description:
-      "Shapes the radial angle envelope of each swirl. Higher values concentrate the strongest rotation into a thinner ring between the center and the edge.",
+      "Controls how abruptly the swirl angle fades to zero near the circle boundary. Higher values keep a flatter interior and a sharper drop close to the edge.",
     min: 0.3,
     max: 5,
     step: 0.05,
