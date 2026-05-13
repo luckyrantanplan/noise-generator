@@ -71,9 +71,8 @@ async function routeRequest(
 
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
-    const { field, parameters, renderOptions } = generateFieldResponseData(
-      requestUrl,
-    );
+    const { field, renderOptions } =
+      generateFieldResponseData(requestUrl);
     const svg = renderFieldSvg(field, renderOptions);
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",
@@ -93,8 +92,7 @@ function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
     const bytes = encodeGeneratedDisplacementField(parameters, field);
     response.writeHead(200, {
       "content-type": "application/octet-stream",
-      "content-disposition":
-        'attachment; filename="displacement-field.bin"',
+      "content-disposition": 'attachment; filename="displacement-field.bin"',
       "cache-control": "no-store",
     });
     response.end(bytes);

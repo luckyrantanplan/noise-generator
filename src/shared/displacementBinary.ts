@@ -90,7 +90,9 @@ export function decodeDisplacementField(
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = view.getUint8(MAGIC_LENGTH);
   if (version !== DISPLACEMENT_BINARY_VERSION) {
-    throw new Error(`Unsupported binary displacement version: ${String(version)}`);
+    throw new Error(
+      `Unsupported binary displacement version: ${String(version)}`,
+    );
   }
 
   const metadataLength = view.getUint32(MAGIC_LENGTH + VERSION_LENGTH, true);
@@ -105,10 +107,13 @@ export function decodeDisplacementField(
   ) as DisplacementBinaryMetadata;
   const payloadBytes = bytes.subarray(metadataEnd);
   if (payloadBytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
-    throw new Error("Binary displacement payload is not aligned to Float32 values");
+    throw new Error(
+      "Binary displacement payload is not aligned to Float32 values",
+    );
   }
 
-  const displacementCount = payloadBytes.byteLength / Float32Array.BYTES_PER_ELEMENT;
+  const displacementCount =
+    payloadBytes.byteLength / Float32Array.BYTES_PER_ELEMENT;
   validateDisplacementLength(metadata, displacementCount);
 
   const displacements = new Float32Array(displacementCount);

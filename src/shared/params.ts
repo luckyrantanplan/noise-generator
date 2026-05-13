@@ -10,7 +10,8 @@ export const PARAMETER_GROUPS = [
   {
     key: "field",
     label: "Field Shape",
-    description: "Primary controls for structure, magnitude, and base direction.",
+    description:
+      "Primary controls for structure, magnitude, and base direction.",
   },
   {
     key: "swirls",
@@ -67,6 +68,7 @@ export const MIN_CUTOFF_PERCENT = 0;
 export const MAX_CUTOFF_PERCENT = 100;
 export const MIN_SWIRL_RADIUS_PERCENT = 3;
 export const MAX_SWIRL_RADIUS_PERCENT = 45;
+export const MAX_SWIRL_STRENGTH = Math.PI * 8;
 
 export const DEFAULT_PARAMETERS: ParameterValues = {
   renderWidth: 960,
@@ -159,7 +161,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "directionNoiseMix",
     label: "Direction Noise Mix",
     description:
-      "Blends the noise-derived direction field with the swirl-derived field. Higher values preserve more noise direction; lower values let swirls dominate.",
+      "Controls how much swirl displacement is added on top of the noise-derived displacement field. Higher values keep more of the noise-only result; lower values let swirl rotations dominate.",
     min: 0,
     max: 1,
     step: 0.01,
@@ -190,11 +192,11 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   {
     group: "swirls",
     key: "swirlStrength",
-    label: "Swirl Strength",
+    label: "Swirl Strength (rad)",
     description:
-      "Strength of the swirl-induced rotation mixed into the direction field. Higher values bend the flow more strongly around swirl centers.",
+      "Peak local rotation angle in radians for each swirl. Values near 2π perform a full turn at the strongest ring, and larger values allow several rotations.",
     min: 0,
-    max: 4,
+    max: MAX_SWIRL_STRENGTH,
     step: 0.05,
     integer: false,
   },
@@ -203,7 +205,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     key: "swirlFalloff",
     label: "Swirl Falloff",
     description:
-      "Controls how quickly each swirl influence fades with distance. Higher values keep the effect concentrated closer to the center.",
+      "Shapes the radial angle envelope of each swirl. Higher values concentrate the strongest rotation into a thinner ring between the center and the edge.",
     min: 0.3,
     max: 5,
     step: 0.05,

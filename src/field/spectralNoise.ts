@@ -1,7 +1,5 @@
 import WebFFT from "webfft";
-
 import type { GridSpec, ScalarField } from "../shared/types.js";
-import { shortSideMetricScales } from "./grid.js";
 import type { SeededRandom } from "./hashSeed.js";
 
 interface SpectralOptions {
@@ -120,7 +118,11 @@ function applyEnvelope(
 ): void {
   for (let rowIndex = 0; rowIndex < transformGrid.height; rowIndex += 1) {
     const frequencyY = signedFrequency(rowIndex, transformGrid.height);
-    for (let columnIndex = 0; columnIndex < transformGrid.width; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < transformGrid.width;
+      columnIndex += 1
+    ) {
       const frequencyX = signedFrequency(columnIndex, transformGrid.width);
       const radius = frequencyRadiusInLongestSideUnits(
         frequencyX,
@@ -144,10 +146,7 @@ export function frequencyRadiusInLongestSideUnits(
   const xScale = longestSide / grid.width;
   const yScale = longestSide / grid.height;
 
-  return Math.hypot(
-    frequencyX * xScale,
-    frequencyY * yScale,
-  );
+  return Math.hypot(frequencyX * xScale, frequencyY * yScale);
 }
 
 function spectralEnvelope(
@@ -160,7 +159,10 @@ function spectralEnvelope(
   }
 
   const longestSide = Math.max(grid.width, grid.height);
-  const cornerFrequency = Math.max(1, (options.cutoffPercent / 100) * longestSide);
+  const cornerFrequency = Math.max(
+    1,
+    (options.cutoffPercent / 100) * longestSide,
+  );
   const normalizedRadius = radius / cornerFrequency;
   const powerSlope =
     options.spectralSlopeDbPerOct / DB_PER_OCTAVE_FOR_UNIT_POWER_SLOPE;
@@ -214,12 +216,19 @@ function createTransformGrid(grid: GridSpec): GridSpec {
   };
 }
 
-function tileFieldToGrid(field: ScalarField, targetGrid: GridSpec): ScalarField {
+function tileFieldToGrid(
+  field: ScalarField,
+  targetGrid: GridSpec,
+): ScalarField {
   const values = new Float32Array(targetGrid.width * targetGrid.height);
 
   for (let rowIndex = 0; rowIndex < targetGrid.height; rowIndex += 1) {
     const sourceRow = rowIndex % field.grid.height;
-    for (let columnIndex = 0; columnIndex < targetGrid.width; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < targetGrid.width;
+      columnIndex += 1
+    ) {
       const sourceColumn = columnIndex % field.grid.width;
       const targetIndex = rowIndex * targetGrid.width + columnIndex;
       const sourceIndex = sourceRow * field.grid.width + sourceColumn;
@@ -235,7 +244,11 @@ function cropComplexRows(rows: ComplexRows, targetGrid: GridSpec): ComplexRows {
 
   for (let rowIndex = 0; rowIndex < targetGrid.height; rowIndex += 1) {
     const croppedRow = new Float32Array(targetGrid.width * 2);
-    for (let columnIndex = 0; columnIndex < targetGrid.width; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < targetGrid.width;
+      columnIndex += 1
+    ) {
       croppedRow[columnIndex * 2] = rows[rowIndex][columnIndex * 2];
       croppedRow[columnIndex * 2 + 1] = rows[rowIndex][columnIndex * 2 + 1];
     }

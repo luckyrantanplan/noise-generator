@@ -63,13 +63,13 @@ Controls the expected number of swirl centers per unit area. Internally this is 
 Swirl Radius
 Radius of influence of each swirl center as a percentage of the shorter side.
 Swirl Strength
-Strength of the rotational contribution around each swirl center.
+Peak local rotation angle around each swirl center. The resulting displacement is the chord of that local rotation, not the tangent direction.
 Swirl Falloff
-Controls how the swirl influence decays with distance from the center.
+Shapes a radial angle envelope so the rotation is weak near the center, strongest in an intermediate ring, and weak again near the edge of the swirl.
 Swirl Direction Bias
 Controls the clockwise-versus-counterclockwise bias of swirl centers. Low values favor clockwise spin, high values favor counterclockwise spin.
 Direction Noise Mix
-Blends the stochastic direction field with the explicit swirl contribution.
+Controls how strongly the swirl displacement is added on top of the stochastic noise displacement.
 Random Seed
 Seed used for all stochastic generation so the result is reproducible. 5. Suggested generation logic
 
@@ -81,9 +81,9 @@ Apply FFT-based spectral filtering to each field independently.
 Use Scale and Spectral Slope to define the shared spectral envelope of the magnitude and direction fields.
 Apply Amplitude Contrast and Amplitude Range to the filtered magnitude field.
 Generate swirl centers using Poisson-disk sampling based on Swirl Density.
-For each swirl center, add a local rotational contribution based on Swirl Radius, Swirl Strength, Swirl Falloff, and Swirl Direction Randomness.
-Combine the noise-based direction field and the swirl contribution using Direction Noise Mix.
-Convert the final amplitude and direction into a 2D displacement vector field.
+For each swirl center, rotate nearby points by a radius-dependent local angle and use the chord of that arc as the swirl displacement contribution.
+Blend the noise-derived displacement field and the swirl displacement contribution using Direction Noise Mix.
+Convert the final result into a 2D displacement vector field.
 Multiply by Force. 6. UI and visualization
 
 The HTML page should include:

@@ -55,38 +55,26 @@ export function generateVectorField(
 
   for (let index = 0; index < direction.length; index += 1) {
     const noiseAngle = filteredDirection.values[index] * Math.PI * 2;
-    const noiseVectorX = Math.cos(noiseAngle);
-    const noiseVectorY = Math.sin(noiseAngle);
-    const swirlWeight = Math.min(1, swirlInfluence.weight[index]);
-    const mixNoise = parameters.directionNoiseMix;
-    const mixSwirl = (1 - mixNoise) * swirlWeight;
-    const swirlLength = Math.hypot(
-      swirlInfluence.vectorX[index],
-      swirlInfluence.vectorY[index],
-    );
-    const swirlVectorX =
-      swirlLength > Number.EPSILON
-        ? swirlInfluence.vectorX[index] / swirlLength
-        : noiseVectorX;
-    const swirlVectorY =
-      swirlLength > Number.EPSILON
-        ? swirlInfluence.vectorY[index] / swirlLength
-        : noiseVectorY;
-    const combinedX = noiseVectorX * mixNoise + swirlVectorX * mixSwirl;
-    const combinedY = noiseVectorY * mixNoise + swirlVectorY * mixSwirl;
-    const combinedLength = Math.hypot(combinedX, combinedY);
-    const unitX =
-      combinedLength > Number.EPSILON
-        ? combinedX / combinedLength
-        : noiseVectorX;
-    const unitY =
-      combinedLength > Number.EPSILON
-        ? combinedY / combinedLength
-        : noiseVectorY;
+    const noiseDisplacementX =
+      Math.cos(noiseAngle) * amplitude[index] * parameters.force;
+    const noiseDisplacementY =
+      Math.sin(noiseAngle) * amplitude[index] * parameters.force;
+    const swirlDisplacementX =
+      swirlInfluence.vectorX[index] * parameters.renderWidth;
+    const swirlDisplacementY =
+      swirlInfluence.vectorY[index] * parameters.renderHeight;
+    const noiseMix = parameters.directionNoiseMix;
+    const swirlMix = 1 - noiseMix;
+    const hasSwirlInfluence = swirlInfluence.weight[index] > 1e-6 ? 1 : 0;
+    const localNoiseMix = 1 - hasSwirlInfluence * swirlMix;
+    const combinedX =
+      noiseDisplacementX * localNoiseMix + swirlDisplacementX * swirlMix;
+    const combinedY =
+      noiseDisplacementY * localNoiseMix + swirlDisplacementY * swirlMix;
 
-    direction[index] = Math.atan2(unitY, unitX);
-    displacementX[index] = unitX * amplitude[index] * parameters.force;
-    displacementY[index] = unitY * amplitude[index] * parameters.force;
+    direction[index] = Math.atan2(combinedY, combinedX);
+    displacementX[index] = combinedX;
+    displacementY[index] = combinedY;
     magnitude[index] = Math.hypot(displacementX[index], displacementY[index]);
   }
 

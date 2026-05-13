@@ -210,4 +210,3 @@ function addPoint(
   const gridRow = Math.floor(point.positionY / cellHeight);
   occupancy[gridRow * gridWidth + gridColumn] = pointIndex;
 }
-

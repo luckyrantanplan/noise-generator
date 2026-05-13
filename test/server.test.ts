@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 
+import { renderFieldSvg } from "../src/server/renderSvg.js";
 import { createAppServer } from "../src/server/server.js";
 import { decodeDisplacementField } from "../src/shared/displacementBinary.js";
+import type { VectorField } from "../src/shared/types.js";
 
 void test("field endpoint returns generated SVG", async () => {
   const server = createAppServer();
@@ -79,7 +81,10 @@ void test("field endpoint returns generated SVG", async () => {
     assert.match(svg, /<line/);
     assert.match(svg, /Scale \(SVG units\)/);
     assert.ok(countSvgTag(svg, "line") > countSvgTag(sparseVectorSvg, "line"));
-    assert.equal(countSvgTag(svg, "rect"), countSvgTag(sparseVectorSvg, "rect"));
+    assert.equal(
+      countSvgTag(svg, "rect"),
+      countSvgTag(sparseVectorSvg, "rect"),
+    );
     assert.match(denseGridSvg, /^<svg/);
     assert.equal(countSvgTag(denseGridSvg, "rect"), 96 * 72 + 1);
     assert.equal(countSvgTag(coarseGridSvg, "rect"), 48 * 36 + 1);
@@ -104,6 +109,48 @@ void test("field endpoint returns generated SVG", async () => {
       });
     });
   }
+});
+
+void test("zero-magnitude vectors do not render fallback arrows", () => {
+  const zeroField: VectorField = {
+    grid: { width: 2, height: 2 },
+    amplitude: new Float32Array(4),
+    direction: new Float32Array(4),
+    displacementX: new Float32Array(4),
+    displacementY: new Float32Array(4),
+    magnitude: new Float32Array(4),
+    swirls: [],
+  };
+
+  const svg = renderFieldSvg(zeroField, {
+    width: 100,
+    height: 80,
+    showHeatmap: false,
+    vectorOverlayDensity: 16,
+  });
+
+  assert.equal(countSvgTag(svg, "line"), 4);
+});
+
+void test("rendered arrows use actual displacement geometry", () => {
+  const field: VectorField = {
+    grid: { width: 1, height: 1 },
+    amplitude: new Float32Array([0]),
+    direction: new Float32Array([0]),
+    displacementX: new Float32Array([10]),
+    displacementY: new Float32Array([-16]),
+    magnitude: new Float32Array([Math.hypot(10, 16)]),
+    swirls: [],
+  };
+
+  const svg = renderFieldSvg(field, {
+    width: 100,
+    height: 80,
+    showHeatmap: false,
+    vectorOverlayDensity: 16,
+  });
+
+  assert.match(svg, /x1="0" y1="0" x2="10" y2="-16"/);
 });
 
 function countSvgTag(svg: string, tagName: string): number {

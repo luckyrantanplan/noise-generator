@@ -13,6 +13,7 @@ import {
   sampleSwirlCenters,
 } from "../src/field/poissonDisk.js";
 import { SeededRandom } from "../src/field/hashSeed.js";
+import { generateVectorField } from "../src/field/composeField.js";
 import { evaluateSwirlInfluence } from "../src/field/swirls.js";
 import {
   frequencyRadiusInLongestSideUnits,
@@ -152,10 +153,10 @@ void test("spectral radius stays isotropic on rectangular grids", () => {
   assert.ok(Math.abs(horizontalRadius - verticalRadius) < 1e-9);
 });
 
-void test("swirl influence remains tangential to the swirl radius", () => {
+void test("swirl influence follows chord geometry for a local rotation", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 1,
+    swirlStrength: Math.PI / 2,
     swirlFalloff: 1,
   };
   const field = evaluateSwirlInfluence(
@@ -174,20 +175,79 @@ void test("swirl influence remains tangential to the swirl radius", () => {
   const pointColumn = 3;
   const pointRow = 2;
   const pointIndex = pointRow * 5 + pointColumn;
-  const pointX = pointColumn / 4;
-  const pointY = pointRow / 4;
-  const radialX = pointX - 0.5;
-  const radialY = pointY - 0.5;
-  const dotProduct =
-    radialX * field.vectorX[pointIndex] + radialY * field.vectorY[pointIndex];
+  assert.ok(Math.abs(field.vectorX[pointIndex] + 0.25) < 1e-6);
+  assert.ok(Math.abs(field.vectorY[pointIndex] - 0.25) < 1e-6);
+});
 
-  assert.ok(Math.abs(dotProduct) < 1e-6);
+void test("swirl displacement peaks between center and edge", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    swirlStrength: Math.PI,
+    swirlFalloff: 2,
+  };
+  const grid = { width: 101, height: 101 };
+  const field = evaluateSwirlInfluence(
+    grid,
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.4,
+        direction: 1,
+      },
+    ],
+    parameters,
+  );
+
+  const nearCenterIndex = indexAt(51, 50, grid);
+  const midRingIndex = indexAt(70, 50, grid);
+  const nearEdgeIndex = indexAt(89, 50, grid);
+  const nearCenterMagnitude = Math.hypot(
+    field.vectorX[nearCenterIndex],
+    field.vectorY[nearCenterIndex],
+  );
+  const midRingMagnitude = Math.hypot(
+    field.vectorX[midRingIndex],
+    field.vectorY[midRingIndex],
+  );
+  const nearEdgeMagnitude = Math.hypot(
+    field.vectorX[nearEdgeIndex],
+    field.vectorY[nearEdgeIndex],
+  );
+
+  assert.ok(midRingMagnitude > nearCenterMagnitude * 20);
+  assert.ok(midRingMagnitude > nearEdgeMagnitude * 20);
+});
+
+void test("swirl displacement is periodic for full turns", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    swirlStrength: Math.PI * 2,
+    swirlFalloff: 1,
+  };
+  const field = evaluateSwirlInfluence(
+    { width: 5, height: 5 },
+    [
+      {
+        positionX: 0.5,
+        positionY: 0.5,
+        radius: 0.5,
+        direction: 1,
+      },
+    ],
+    parameters,
+  );
+
+  const pointIndex = indexAt(3, 2, { width: 5, height: 5 });
+  assert.ok(
+    Math.hypot(field.vectorX[pointIndex], field.vectorY[pointIndex]) < 1e-6,
+  );
 });
 
 void test("swirl influence stays isotropic on rectangular grids", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    swirlStrength: 1,
+    swirlStrength: Math.PI / 2,
     swirlFalloff: 1,
   };
   const grid = { width: 33, height: 17 };
@@ -204,13 +264,137 @@ void test("swirl influence stays isotropic on rectangular grids", () => {
     parameters,
   );
 
-  const horizontalIndex = indexAt(17, 8, grid);
-  const verticalIndex = indexAt(16, 9, grid);
-
-  assert.ok(
-    Math.abs(field.weight[horizontalIndex] - field.weight[verticalIndex]) <
-      0.01,
+  const horizontalIndex = indexAt(18, 8, grid);
+  const verticalIndex = indexAt(16, 10, grid);
+  const horizontalMagnitude = Math.hypot(
+    field.vectorX[horizontalIndex],
+    field.vectorY[horizontalIndex],
   );
+  const verticalMagnitude = Math.hypot(
+    field.vectorX[verticalIndex],
+    field.vectorY[verticalIndex],
+  );
+
+  assert.ok(Math.abs(horizontalMagnitude - verticalMagnitude) < 0.01);
+});
+
+void test("direction noise mix zero keeps full swirl chords and preserves background noise", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    force: 1,
+    directionNoiseMix: 0,
+    swirlDensity: 1,
+    swirlRadius: 45,
+    swirlStrength: Math.PI / 2,
+    swirlFalloff: 1,
+    randomSeed: "pure-swirl",
+  };
+  const grid = { width: 9, height: 9 };
+  const generatedField = generateVectorField(parameters, grid);
+  const noiseOnlyField = generateVectorField(
+    {
+      ...parameters,
+      swirlDensity: 0,
+    },
+    grid,
+  );
+  const swirlField = evaluateSwirlInfluence(
+    grid,
+    generatedField.swirls,
+    parameters,
+  );
+  let outsideSupportCount = 0;
+  let insideSupportCount = 0;
+
+  for (let index = 0; index < generatedField.displacementX.length; index += 1) {
+    if (swirlField.weight[index] > 1e-6) {
+      insideSupportCount += 1;
+      assert.ok(
+        Math.abs(
+          generatedField.displacementX[index] -
+            swirlField.vectorX[index] * parameters.renderWidth,
+        ) < 2e-5,
+      );
+      assert.ok(
+        Math.abs(
+          generatedField.displacementY[index] -
+            swirlField.vectorY[index] * parameters.renderHeight,
+        ) < 2e-5,
+      );
+      continue;
+    }
+
+    outsideSupportCount += 1;
+    assert.ok(
+      Math.abs(
+        generatedField.displacementX[index] -
+          noiseOnlyField.displacementX[index],
+      ) < 1e-6,
+    );
+    assert.ok(
+      Math.abs(
+        generatedField.displacementY[index] -
+          noiseOnlyField.displacementY[index],
+      ) < 1e-6,
+    );
+  }
+
+  assert.ok(outsideSupportCount > 0);
+  assert.ok(insideSupportCount > 0);
+});
+
+void test("force does not scale swirl chord length", () => {
+  const baseParameters = {
+    ...DEFAULT_PARAMETERS,
+    directionNoiseMix: 0,
+    swirlDensity: 1,
+    swirlRadius: 45,
+    swirlStrength: Math.PI / 2,
+    swirlFalloff: 1,
+    randomSeed: "force-invariant-swirl",
+  };
+  const grid = { width: 9, height: 9 };
+  const lowForceField = generateVectorField(
+    {
+      ...baseParameters,
+      force: 1,
+    },
+    grid,
+  );
+  const highForceField = generateVectorField(
+    {
+      ...baseParameters,
+      force: 7,
+    },
+    grid,
+  );
+  const swirlField = evaluateSwirlInfluence(grid, lowForceField.swirls, {
+    ...baseParameters,
+    force: 1,
+  });
+  let insideSupportCount = 0;
+
+  for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
+    if (swirlField.weight[index] <= 1e-6) {
+      continue;
+    }
+
+    insideSupportCount += 1;
+    assert.ok(
+      Math.abs(
+        lowForceField.displacementX[index] -
+          highForceField.displacementX[index],
+      ) < 2e-5,
+    );
+    assert.ok(
+      Math.abs(
+        lowForceField.displacementY[index] -
+          highForceField.displacementY[index],
+      ) < 2e-5,
+    );
+  }
+
+  assert.ok(insideSupportCount > 0);
 });
 
 void test("parameter parsing clamps numeric values and preserves a seed", () => {
@@ -303,7 +487,9 @@ void test("higher cutoff percent preserves finer spatial variation", () => {
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
-  assert.ok(measureFieldRoughness(highCutoff) > measureFieldRoughness(lowCutoff));
+  assert.ok(
+    measureFieldRoughness(highCutoff) > measureFieldRoughness(lowCutoff),
+  );
 });
 
 void test("grid sparseness maps SVG units to grid dimensions", () => {
@@ -324,10 +510,16 @@ function measureFieldRoughness(field: ScalarField): number {
   let comparisonCount = 0;
 
   for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < field.grid.width; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < field.grid.width;
+      columnIndex += 1
+    ) {
       const index = rowIndex * field.grid.width + columnIndex;
       if (columnIndex + 1 < field.grid.width) {
-        differenceTotal += Math.abs(field.values[index] - field.values[index + 1]);
+        differenceTotal += Math.abs(
+          field.values[index] - field.values[index + 1],
+        );
         comparisonCount += 1;
       }
       if (rowIndex + 1 < field.grid.height) {

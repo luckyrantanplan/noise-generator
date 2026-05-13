@@ -55,9 +55,15 @@ function renderHeatmap(
 ): string {
   const fragments: string[] = [];
   for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
-    for (let columnIndex = 0; columnIndex < field.grid.width; columnIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < field.grid.width;
+      columnIndex += 1
+    ) {
       const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
-      const color = colorAt(displayMagnitudeRatio(field.magnitude[scalarIndex]));
+      const color = colorAt(
+        displayMagnitudeRatio(field.magnitude[scalarIndex]),
+      );
       const positionX = columnIndex * cellWidth;
       const positionY = rowIndex * cellHeight;
       fragments.push(
@@ -68,33 +74,25 @@ function renderHeatmap(
   return fragments.join("");
 }
 
-function renderArrows(
-  field: VectorField,
-  options: RenderOptions,
-): string {
+function renderArrows(field: VectorField, options: RenderOptions): string {
   const fragments: string[] = [];
-  const arrowScale = Math.min(options.width, options.height) * 0.038;
   const arrowStep = densityToArrowStep(options.vectorOverlayDensity, field);
-  for (
-    let rowIndex = 0;
-    rowIndex < field.grid.height;
-    rowIndex += arrowStep
-  ) {
+  for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += arrowStep) {
     for (
       let columnIndex = 0;
       columnIndex < field.grid.width;
       columnIndex += arrowStep
     ) {
       const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
+      if (field.magnitude[scalarIndex] <= 1e-6) {
+        continue;
+      }
       const centerX =
         normalizedCoordinate(columnIndex, field.grid.width) * options.width;
       const centerY =
         normalizedCoordinate(rowIndex, field.grid.height) * options.height;
-      const magnitudeRatio = displayMagnitudeRatio(field.magnitude[scalarIndex]);
-      const arrowLength = 6 + magnitudeRatio * arrowScale;
-      const angle = field.direction[scalarIndex];
-      const endX = centerX + Math.cos(angle) * arrowLength;
-      const endY = centerY + Math.sin(angle) * arrowLength;
+      const endX = centerX + field.displacementX[scalarIndex];
+      const endY = centerY + field.displacementY[scalarIndex];
       fragments.push(
         `<line x1="${formatNumber(centerX)}" y1="${formatNumber(centerY)}" x2="${formatNumber(endX)}" y2="${formatNumber(endY)}" />`,
       );

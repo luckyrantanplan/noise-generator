@@ -39,9 +39,10 @@ export function normalizedCoordinate(
   return cellIndex / (cellCount - 1);
 }
 
-export function shortSideMetricScales(
-  grid: GridSpec,
-): { xScale: number; yScale: number } {
+export function shortSideMetricScales(grid: GridSpec): {
+  xScale: number;
+  yScale: number;
+} {
   const shortestSide = Math.min(grid.width, grid.height);
   return {
     xScale: grid.width / shortestSide,

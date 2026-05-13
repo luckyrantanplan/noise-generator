@@ -67,14 +67,44 @@ function accumulateSwirlsAtPoint(
     }
 
     const normalizedDistance = distance / swirl.radius;
-    const falloff = Math.pow(1 - normalizedDistance, parameters.swirlFalloff);
-    const influence = falloff * parameters.swirlStrength;
-    const tangentAngle =
-      Math.atan2(physicalDeltaY, physicalDeltaX) +
-      swirl.direction * (Math.PI / 2);
+    const angleEnvelope = radialAngleEnvelope(
+      normalizedDistance,
+      parameters.swirlFalloff,
+    );
+    const rotationAngle =
+      swirl.direction * parameters.swirlStrength * angleEnvelope;
+    const chord = rotateOffsetByAngle(
+      physicalDeltaX,
+      physicalDeltaY,
+      rotationAngle,
+    );
 
-    vectorX[scalarIndex] += Math.cos(tangentAngle) * influence;
-    vectorY[scalarIndex] += Math.sin(tangentAngle) * influence;
-    weight[scalarIndex] += influence;
+    vectorX[scalarIndex] += chord.x / metricScales.xScale;
+    vectorY[scalarIndex] += chord.y / metricScales.yScale;
+    weight[scalarIndex] += angleEnvelope;
   }
+}
+
+function radialAngleEnvelope(
+  normalizedDistance: number,
+  swirlFalloff: number,
+): number {
+  const bell = Math.sin(normalizedDistance * Math.PI);
+  return Math.pow(Math.max(0, bell), swirlFalloff);
+}
+
+function rotateOffsetByAngle(
+  offsetX: number,
+  offsetY: number,
+  angle: number,
+): { x: number; y: number } {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const rotatedX = offsetX * cosine - offsetY * sine;
+  const rotatedY = offsetX * sine + offsetY * cosine;
+
+  return {
+    x: rotatedX - offsetX,
+    y: rotatedY - offsetY,
+  };
 }

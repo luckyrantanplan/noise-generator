@@ -37,9 +37,10 @@ void refreshPreview(currentParameters);
 function requireElement(selector: "#controls"): HTMLFormElement;
 function requireElement(selector: "#preview"): HTMLDivElement;
 function requireElement(selector: "#status"): HTMLSpanElement;
-function requireElement(selector: "#import-binary"): HTMLButtonElement;
+function requireElement(selector: "#import-binary" | "#export-binary"): HTMLButtonElement;
 function requireElement(selector: "#import-binary-input"): HTMLInputElement;
-function requireElement(selector: "#export-binary"): HTMLButtonElement;
+ 
+
 function requireElement(selector: string): HTMLElement {
   const element = document.querySelector(selector);
   if (element === null) {
@@ -128,7 +129,9 @@ function createBooleanControl(
 
   const label = document.createElement("label");
   label.htmlFor = definition.key;
-  label.appendChild(createLabelContent(definition.label, definition.description));
+  label.appendChild(
+    createLabelContent(definition.label, definition.description),
+  );
 
   const input = document.createElement("input");
   input.id = definition.key;
@@ -155,7 +158,9 @@ function createSeedControl(
 
   const label = document.createElement("label");
   label.htmlFor = "randomSeed";
-  label.appendChild(createLabelContent(definition.label, definition.description));
+  label.appendChild(
+    createLabelContent(definition.label, definition.description),
+  );
 
   const input = document.createElement("input");
   input.id = "randomSeed";
