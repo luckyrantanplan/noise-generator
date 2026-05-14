@@ -12,7 +12,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createGridFromSparseness } from "../field/grid.js";
 import { generateVectorField } from "../field/composeField.js";
 import { parseParameters } from "../shared/params.js";
-import type { ParameterValues, RenderOptions } from "../shared/types.js";
 import { encodeGeneratedDisplacementField } from "./exportBinary.js";
 import { renderFieldSvg } from "./renderSvg.js";
 
@@ -71,8 +70,21 @@ async function routeRequest(
 
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   try {
-    const { field, renderOptions } = generateFieldResponseData(requestUrl);
-    const svg = renderFieldSvg(field, renderOptions);
+    const parameters = parseParameters(requestUrl.searchParams);
+    const width = parameters.renderWidth;
+    const height = parameters.renderHeight;
+    const grid = createGridFromSparseness(
+      width,
+      height,
+      parameters.gridSparseness,
+    );
+    const field = generateVectorField(parameters, grid);
+    const svg = renderFieldSvg(field, {
+      width,
+      height,
+      showHeatmap: parameters.showHeatmap,
+      vectorOverlayDensity: parameters.vectorOverlayDensity,
+    });
     response.writeHead(200, {
       "content-type": "image/svg+xml; charset=utf-8",
       "cache-control": "no-store",
@@ -87,7 +99,13 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
 
 function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
   try {
-    const { field, parameters } = generateFieldResponseData(requestUrl);
+    const parameters = parseParameters(requestUrl.searchParams);
+    const grid = createGridFromSparseness(
+      parameters.renderWidth,
+      parameters.renderHeight,
+      parameters.gridSparseness,
+    );
+    const field = generateVectorField(parameters, grid);
     const bytes = encodeGeneratedDisplacementField(parameters, field);
     response.writeHead(200, {
       "content-type": "application/octet-stream",
@@ -100,32 +118,6 @@ function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
       error instanceof Error ? error.message : "Unknown export error";
     sendText(response, 500, message);
   }
-}
-
-function generateFieldResponseData(requestUrl: URL): {
-  field: ReturnType<typeof generateVectorField>;
-  parameters: ParameterValues;
-  renderOptions: RenderOptions;
-} {
-  const parameters = parseParameters(requestUrl.searchParams);
-  const renderOptions = createRenderOptions(parameters);
-  const grid = createGridFromSparseness(
-    renderOptions.width,
-    renderOptions.height,
-    parameters.gridSparseness,
-  );
-  const field = generateVectorField(parameters, grid);
-
-  return { field, parameters, renderOptions };
-}
-
-function createRenderOptions(parameters: ParameterValues): RenderOptions {
-  return {
-    width: parameters.renderWidth,
-    height: parameters.renderHeight,
-    showHeatmap: parameters.showHeatmap,
-    vectorOverlayDensity: parameters.vectorOverlayDensity,
-  };
 }
 
 async function serveFile(
