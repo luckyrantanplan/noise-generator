@@ -7,6 +7,72 @@ import { createAppServer } from "../src/server/server.js";
 import { decodeDisplacementField } from "../src/shared/displacementBinary.js";
 import type { VectorField } from "../src/shared/types.js";
 
+void test("html and browser module routes are served from source", async () => {
+  const server = createAppServer();
+  await new Promise<void>((resolve) => {
+    server.listen(0, resolve);
+  });
+
+  try {
+    const address = server.address() as AddressInfo;
+    const htmlResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/`,
+    );
+    const html = await htmlResponse.text();
+    const clientModuleResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/src/client/index.js`,
+    );
+    const clientModule = await clientModuleResponse.text();
+    const sharedModuleResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/src/shared/params.js`,
+    );
+    const sharedModule = await sharedModuleResponse.text();
+    const missingModuleResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/src/client/missing.js`,
+    );
+    const traversalResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/src/%2e%2e/package.js`,
+    );
+
+    assert.equal(htmlResponse.status, 200);
+    assert.match(htmlResponse.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(html, /<script type="module" src="\/src\/client\/index\.js">\s*<\/script>/);
+
+    assert.equal(clientModuleResponse.status, 200);
+    assert.match(
+      clientModuleResponse.headers.get("content-type") ?? "",
+      /application\/javascript/,
+    );
+    assert.match(
+      clientModule,
+      /import \{ decodeDisplacementField \} from "\.\.\/shared\/displacementBinary\.js";/,
+    );
+    assert.match(
+      clientModule,
+      /const currentParameters\s*=\s*normalizeParameters\(\{/,
+    );
+    assert.doesNotMatch(clientModule, /HTMLFormElement/);
+    assert.doesNotMatch(clientModule, /type BooleanParameterDefinition/);
+
+    assert.equal(sharedModuleResponse.status, 200);
+    assert.match(
+      sharedModuleResponse.headers.get("content-type") ?? "",
+      /application\/javascript/,
+    );
+    assert.match(sharedModule, /export const DEFAULT_PARAMETERS\s*=\s*\{/);
+    assert.doesNotMatch(sharedModule, /import type/);
+
+    assert.equal(missingModuleResponse.status, 404);
+    assert.equal(traversalResponse.status, 404);
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  }
+});
+
 void test("field endpoint returns generated SVG", async () => {
   const server = createAppServer();
   await new Promise<void>((resolve) => {

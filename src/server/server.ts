@@ -1,24 +1,19 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { readFile, stat } from "node:fs/promises";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { createGridFromSparseness } from "../field/grid.js";
-import { generateVectorField } from "../field/composeField.js";
+import { generateDisplacementField } from "../field/composeField.js";
 import { parseParameters } from "../shared/params.js";
 import { encodeGeneratedDisplacementField } from "./exportBinary.js";
 import { renderFieldSvg } from "./renderSvg.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
-const projectRoot = path.resolve(currentDirectory, "../../..");
-const distRoot = path.join(projectRoot, "dist");
+const projectRoot = path.resolve(currentDirectory, "../..");
+const sourceRoot = path.join(projectRoot, "src");
 
 export function createAppServer(): Server {
   return createServer((request, response) => {
@@ -55,17 +50,64 @@ async function routeRequest(
     return;
   }
 
-  if (requestUrl.pathname.startsWith("/src/")) {
+  if (
+    requestUrl.pathname.startsWith("/src/") &&
+    requestUrl.pathname.endsWith(".js")
+  ) {
     const relativePath = requestUrl.pathname.slice(1);
-    await serveFile(
-      path.join(distRoot, relativePath),
-      contentTypeForPath(relativePath),
-      response,
-    );
+    await serveBrowserModule(relativePath, response);
     return;
   }
 
   sendText(response, 404, "Not found");
+}
+
+async function serveBrowserModule(
+  relativePath: string,
+  response: ServerResponse,
+): Promise<void> {
+  const relativeSourcePath = relativePath
+    .slice("src/".length)
+    .replace(/\.js$/, ".ts");
+  const sourceFilePath = path.resolve(sourceRoot, relativeSourcePath);
+  const sourceRootPrefix = `${sourceRoot}${path.sep}`;
+
+  if (
+    sourceFilePath !== sourceRoot &&
+    !sourceFilePath.startsWith(sourceRootPrefix)
+  ) {
+    sendText(response, 404, "Not found");
+    return;
+  }
+
+  try {
+    const fileStat = await stat(sourceFilePath);
+    if (!fileStat.isFile()) {
+      sendText(response, 404, "Not found");
+      return;
+    }
+  } catch {
+    sendText(response, 404, "Not found");
+    return;
+  }
+
+  try {
+    const source = await readFile(sourceFilePath, "utf-8");
+    const output = stripTypeScriptTypes(source, {
+      mode: "strip",
+      sourceUrl: pathToFileURL(sourceFilePath).href,
+    });
+
+    response.writeHead(200, {
+      "content-type": "application/javascript; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    response.end(output);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown module transform error";
+    sendText(response, 500, message);
+  }
 }
 
 function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
@@ -73,12 +115,7 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
     const parameters = parseParameters(requestUrl.searchParams);
     const width = parameters.renderWidth;
     const height = parameters.renderHeight;
-    const grid = createGridFromSparseness(
-      width,
-      height,
-      parameters.gridSparseness,
-    );
-    const field = generateVectorField(parameters, grid);
+    const field = generateDisplacementField(parameters);
     const svg = renderFieldSvg(field, {
       width,
       height,
@@ -100,12 +137,7 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
 function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
   try {
     const parameters = parseParameters(requestUrl.searchParams);
-    const grid = createGridFromSparseness(
-      parameters.renderWidth,
-      parameters.renderHeight,
-      parameters.gridSparseness,
-    );
-    const field = generateVectorField(parameters, grid);
+    const field = generateDisplacementField(parameters);
     const bytes = encodeGeneratedDisplacementField(parameters, field);
     response.writeHead(200, {
       "content-type": "application/octet-stream",
@@ -152,16 +184,6 @@ function sendText(
     "content-type": "text/plain; charset=utf-8",
   });
   response.end(message);
-}
-
-function contentTypeForPath(filePath: string): string {
-  if (filePath.endsWith(".js")) {
-    return "application/javascript; charset=utf-8";
-  }
-  if (filePath.endsWith(".css")) {
-    return "text/css; charset=utf-8";
-  }
-  return "application/octet-stream";
 }
 
 function isMainModule(): boolean {

@@ -22,10 +22,10 @@ The result is reproducible for a given seed and parameter set.
 
 ## Requirements
 
-- Node.js
+- Node.js 22.13 or newer
 - npm
 
-The repository does not currently declare a specific Node version. Use a current Node release with native ESM support.
+The development server serves browser JavaScript directly from TypeScript source using Node's native `stripTypeScriptTypes`, so a recent Node release is required.
 
 ## Getting Started
 
@@ -42,6 +42,7 @@ npm start
 ```
 
 This builds the TypeScript sources and starts the HTTP server on `http://localhost:4173` by default.
+This starts the server directly from TypeScript source through `tsx` and serves browser modules from `src/*.ts` as stripped JavaScript at `/src/*.js`.
 
 To use a different port:
 
@@ -49,7 +50,7 @@ To use a different port:
 PORT=5000 npm start
 ```
 
-Do not open `index.html` directly from the filesystem. The client depends on server routes for compiled browser code and generated field responses.
+Do not open `index.html` directly from the filesystem. The client depends on server routes for source-served browser modules and generated field responses.
 
 ## Using The App
 
@@ -144,16 +145,16 @@ docs/       Specification and planning notes
 Key modules:
 
 - `src/client/index.ts`: builds the controls, triggers preview refreshes, handles binary import/export
-- `src/server/server.ts`: serves the app shell, compiled client files, SVG preview, and binary export
+- `src/server/server.ts`: serves the app shell, strips browser-facing TypeScript modules to JavaScript on demand, and exposes the SVG and binary endpoints
 - `src/field/composeField.ts`: generates the final vector field and applies the shared force budget
 - `src/server/renderSvg.ts`: converts generated field data into SVG output
 - `src/shared/displacementBinary.ts`: defines the binary displacement format and codec
 
 ## Scripts
 
-- `npm run build`: compile TypeScript into `dist/`
-- `npm start`: build and start the server
-- `npm test`: build and run the test suite with Node's test runner
+- `npm run check`: typecheck the TypeScript project with no emitted output, then run ESLint
+- `npm start`: run the server directly from TypeScript source with `tsx`
+- `npm test`: run the TypeScript test suite through Node with `tsx`
 - `npm run coverage`: run tests with experimental coverage output
 - `npm run lint`: run ESLint across the repository
 - `npm run format`: format the repository with Prettier
@@ -170,8 +171,8 @@ The existing test suite covers:
 Run the checks you need with:
 
 ```bash
+npm run check
 npm test
-npm run lint
 ```
 
 ## Notes

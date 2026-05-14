@@ -3,20 +3,28 @@
   "version": "1.0.0",
   "description": "",
   "type": "module",
-  "main": "dist/src/server/server.js",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node dist/src/server/server.js",
-    "test": "npm run build && node --test dist/test/*.test.js",
+    "check": "tsc --noEmit && npm run lint",
+    "start": "tsx src/server/server.ts",
+    "test": "node --import tsx --test test/*.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "coverage": "npm run build && node --test --experimental-test-coverage dist/test/*.test.js"
+    "coverage": "node --import tsx --test --experimental-test-coverage test/*.test.ts"
   },
   "author": "",
   "license": "ISC",
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  },
   "dependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.2",

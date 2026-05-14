@@ -15,6 +15,7 @@ import {
 import { SeededRandom } from "../src/field/hashSeed.js";
 import {
   composeWithSharedBudget,
+  generateDisplacementField,
   generateVectorField,
 } from "../src/field/composeField.js";
 import { evaluateSwirlInfluence } from "../src/field/swirls.js";
@@ -432,24 +433,24 @@ void test("swirl displacement stays isotropic on wide render sizes", () => {
 });
 
 void test("force still scales the noise contribution outside swirl support", () => {
-  const lowForceField = generateVectorField(
-    {
-      ...DEFAULT_PARAMETERS,
-      force: 5,
-      swirlDensity: 0,
-      randomSeed: "noise-force",
-    },
-    { width: 9, height: 9 },
-  );
-  const highForceField = generateVectorField(
-    {
-      ...DEFAULT_PARAMETERS,
-      force: 15,
-      swirlDensity: 0,
-      randomSeed: "noise-force",
-    },
-    { width: 9, height: 9 },
-  );
+  const lowForceField = generateDisplacementField({
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 9,
+    renderHeight: 9,
+    gridSparseness: 1,
+    force: 5,
+    swirlDensity: 0,
+    randomSeed: "noise-force",
+  });
+  const highForceField = generateDisplacementField({
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 9,
+    renderHeight: 9,
+    gridSparseness: 1,
+    force: 15,
+    swirlDensity: 0,
+    randomSeed: "noise-force",
+  });
 
   let changedCount = 0;
   for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
@@ -503,6 +504,46 @@ void test("generated field magnitudes stay within force", () => {
   for (const value of generatedField.magnitude) {
     assert.ok(value <= parameters.force + 1e-5);
   }
+});
+
+void test("generateDisplacementField matches explicit grid generation", () => {
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 640,
+    renderHeight: 480,
+    gridSparseness: 20,
+    randomSeed: "wrapper-parity",
+  };
+  const explicitGrid = createGridFromSparseness(
+    parameters.renderWidth,
+    parameters.renderHeight,
+    parameters.gridSparseness,
+  );
+  const explicitField = generateVectorField(parameters, explicitGrid);
+  const wrappedField = generateDisplacementField(parameters);
+
+  assert.deepEqual(wrappedField.grid, explicitField.grid);
+  assert.deepEqual(wrappedField.swirls, explicitField.swirls);
+  assert.deepEqual(
+    Array.from(wrappedField.amplitude),
+    Array.from(explicitField.amplitude),
+  );
+  assert.deepEqual(
+    Array.from(wrappedField.direction),
+    Array.from(explicitField.direction),
+  );
+  assert.deepEqual(
+    Array.from(wrappedField.displacementX),
+    Array.from(explicitField.displacementX),
+  );
+  assert.deepEqual(
+    Array.from(wrappedField.displacementY),
+    Array.from(explicitField.displacementY),
+  );
+  assert.deepEqual(
+    Array.from(wrappedField.magnitude),
+    Array.from(explicitField.magnitude),
+  );
 });
 
 void test("parameter parsing clamps numeric values and preserves a seed", () => {

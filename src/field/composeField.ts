@@ -9,11 +9,24 @@ import type {
   VectorField,
 } from "../shared/types.js";
 import { shapeAmplitudeField } from "./amplitude.js";
-import { DEFAULT_GRID, createGrid } from "./grid.js";
+import { DEFAULT_GRID, createGrid, createGridFromSparseness } from "./grid.js";
 import { sampleSwirlCenters } from "./poissonDisk.js";
 import { SeededRandom } from "./hashSeed.js";
 import { generateWhiteNoise, applySpectralFilter } from "./spectralNoise.js";
 import { evaluateSwirlInfluence } from "./swirls.js";
+
+export function generateDisplacementField(
+  parameters: ParameterValues,
+): VectorField {
+  const normalizedParameters = normalizeParameters(parameters);
+  const grid = createGridFromSparseness(
+    normalizedParameters.renderWidth,
+    normalizedParameters.renderHeight,
+    normalizedParameters.gridSparseness,
+  );
+
+  return generateVectorField(normalizedParameters, grid);
+}
 
 export function generateVectorField(
   parameters: ParameterValues,
