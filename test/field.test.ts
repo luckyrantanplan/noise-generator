@@ -26,13 +26,10 @@ import {
 } from "../src/field/spectralNoise.js";
 import {
   DEFAULT_PARAMETERS,
-  MAX_FORCE,
   MAX_CUTOFF_PERCENT,
-  MAX_SPECTRAL_SLOPE_DB_PER_OCT,
-  MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
-  MAX_SWIRL_STRENGTH_PERCENT,
-  MIN_CUTOFF_PERCENT,
+  validateParameters,
   parseParameters,
+  MIN_CUTOFF_PERCENT,
 } from "../src/shared/params.js";
 import {
   maxSwirlRadiusInWorldUnits,
@@ -546,42 +543,99 @@ void test("generateDisplacementField matches explicit grid generation", () => {
   );
 });
 
-void test("parameter parsing clamps numeric values and preserves a seed", () => {
-  const searchParams = new URLSearchParams({
-    renderWidth: "99999",
-    renderHeight: "0",
-    force: "99999",
-    scale: "999",
-    gridSparseness: "0",
-    spectralSlopeDbPerOct: "999",
-    showHeatmap: "false",
-    vectorOverlayDensity: "999",
-    swirlMinimumAngleDegrees: "999",
-    swirlStrengthPercent: "99999",
-    swirlDirectionBias: "999",
+void test("parameter parsing preserves valid numeric values exactly", () => {
+  const parameters = createParameterObject({
+    renderWidth: 99999,
+    renderHeight: 9,
+    force: 99999,
+    scale: 999,
+    gridSparseness: 2,
+    amplitudeContrast: 1.5,
+    spectralSlopeDbPerOct: 999,
+    showHeatmap: false,
+    vectorOverlayDensity: 999,
+    swirlDensity: 123,
+    swirlMinimumAngleDegrees: 999,
+    swirlStrengthPercent: 99999,
+    swirlFalloff: 3.25,
+    swirlDirectionBias: 999,
+    directionNoiseMix: -4,
     randomSeed: "  tuned-seed  ",
   });
 
-  const parsedParameters = parseParameters(searchParams);
+  const parsedParameters = parseParameters(parameters);
 
-  assert.equal(parsedParameters.renderWidth, 1920);
-  assert.equal(parsedParameters.renderHeight, 180);
-  assert.equal(parsedParameters.force, MAX_FORCE);
-  assert.equal(parsedParameters.scale, MAX_CUTOFF_PERCENT);
-  assert.equal(parsedParameters.gridSparseness, 1);
-  assert.equal(
-    parsedParameters.spectralSlopeDbPerOct,
-    MAX_SPECTRAL_SLOPE_DB_PER_OCT,
-  );
+  assert.equal(parsedParameters.renderWidth, 99999);
+  assert.equal(parsedParameters.renderHeight, 9);
+  assert.equal(parsedParameters.force, 99999);
+  assert.equal(parsedParameters.scale, 999);
+  assert.equal(parsedParameters.gridSparseness, 2);
+  assert.equal(parsedParameters.spectralSlopeDbPerOct, 999);
+  assert.equal(parsedParameters.amplitudeContrast, 1.5);
   assert.equal(parsedParameters.showHeatmap, false);
-  assert.equal(parsedParameters.vectorOverlayDensity, 64);
-  assert.equal(
-    parsedParameters.swirlMinimumAngleDegrees,
-    MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
+  assert.equal(parsedParameters.vectorOverlayDensity, 999);
+  assert.equal(parsedParameters.swirlDensity, 123);
+  assert.equal(parsedParameters.swirlMinimumAngleDegrees, 999);
+  assert.equal(parsedParameters.swirlStrengthPercent, 99999);
+  assert.equal(parsedParameters.swirlFalloff, 3.25);
+  assert.equal(parsedParameters.swirlDirectionBias, 999);
+  assert.equal(parsedParameters.directionNoiseMix, -4);
+  assert.equal(parsedParameters.randomSeed, "  tuned-seed  ");
+});
+
+void test("parameter parsing requires every parameter", () => {
+  assert.throws(
+    () => {
+      parseParameters(
+        {
+          renderWidth: "640",
+        },
+      );
+    },
+    /Missing required parameter: renderHeight/,
   );
-  assert.equal(parsedParameters.swirlStrengthPercent, MAX_SWIRL_STRENGTH_PERCENT);
-  assert.equal(parsedParameters.swirlDirectionBias, 1);
-  assert.equal(parsedParameters.randomSeed, "tuned-seed");
+});
+
+void test("parameter parsing rejects non-computable numeric values", () => {
+  assert.throws(
+    () => {
+      parseParameters(createParameterObject({ renderHeight: 0 }));
+    },
+    /Invalid parameter renderHeight: must be >= 1/,
+  );
+
+  assert.throws(
+    () => {
+      parseParameters(createParameterObject({ gridSparseness: 0 }));
+    },
+    /Invalid parameter gridSparseness: must be >= 1/,
+  );
+
+  assert.throws(
+    () => {
+      parseParameters(createParameterObject({ amplitudeContrast: -1 }));
+    },
+    /Invalid parameter amplitudeContrast: must be >= 0/,
+  );
+
+  assert.throws(
+    () => {
+      parseParameters(createParameterObject({ showHeatmap: "maybe" }));
+    },
+    /Invalid parameter showHeatmap: must be boolean/,
+  );
+});
+
+void test("schema validation rejects null parameter values", () => {
+  assert.throws(
+    () => {
+      validateParameters({
+        ...DEFAULT_PARAMETERS,
+        renderWidth: null,
+      });
+    },
+    /Invalid parameter renderWidth: must be integer/,
+  );
 });
 
 void test("spectral filtering normalizes noise into unit range", () => {
@@ -686,4 +740,13 @@ function measureFieldRoughness(field: ScalarField): number {
   }
 
   return comparisonCount === 0 ? 0 : differenceTotal / comparisonCount;
+}
+
+function createParameterObject(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...DEFAULT_PARAMETERS,
+    ...overrides,
+  };
 }

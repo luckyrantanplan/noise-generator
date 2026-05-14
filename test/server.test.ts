@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { renderFieldSvg } from "../src/server/renderSvg.js";
 import { createAppServer } from "../src/server/server.js";
 import { decodeDisplacementField } from "../src/shared/displacementBinary.js";
+import { DEFAULT_PARAMETERS } from "../src/shared/params.js";
 import type { VectorField } from "../src/shared/types.js";
 
 void test("html and browser module routes are served from source", async () => {
@@ -81,51 +82,90 @@ void test("field endpoint returns generated SVG", async () => {
 
   try {
     const address = server.address() as AddressInfo;
-    const response = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20`,
-    );
+    const response = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 20,
+    });
     const svg = await response.text();
-    const sparseVectorResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&vectorOverlayDensity=8`,
-    );
+    const sparseVectorResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 20,
+      vectorOverlayDensity: 8,
+    });
     const sparseVectorSvg = await sparseVectorResponse.text();
-    const denseGridResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&gridSparseness=10`,
-    );
+    const denseGridResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 20,
+      gridSparseness: 10,
+    });
     const denseGridSvg = await denseGridResponse.text();
-    const coarseGridResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&gridSparseness=20`,
-    );
+    const coarseGridResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 20,
+      gridSparseness: 20,
+    });
     const coarseGridSvg = await coarseGridResponse.text();
-    const lowForceResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=10&showHeatmap=false`,
-    );
+    const lowForceResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 10,
+      showHeatmap: false,
+    });
     const lowForceSvg = await lowForceResponse.text();
-    const highForceResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=60&showHeatmap=false`,
-    );
+    const highForceResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 60,
+      showHeatmap: false,
+    });
     const highForceSvg = await highForceResponse.text();
-    const wideSwirlResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlMinimumAngleDegrees=30`,
-    );
+    const wideSwirlResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      swirlMinimumAngleDegrees: 30,
+    });
     const wideSwirlSvg = await wideSwirlResponse.text();
-    const tightSwirlResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&swirlMinimumAngleDegrees=180`,
-    );
+    const tightSwirlResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      swirlMinimumAngleDegrees: 180,
+    });
     const tightSwirlSvg = await tightSwirlResponse.text();
-    const vectorOnlyResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&force=20&showHeatmap=false`,
-    );
+    const vectorOnlyResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      force: 20,
+      showHeatmap: false,
+    });
     const vectorOnlySvg = await vectorOnlyResponse.text();
-    const customSizeResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.svg?randomSeed=test-seed&renderWidth=640&renderHeight=480`,
-    );
+    const customSizeResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      renderWidth: 640,
+      renderHeight: 480,
+    });
     const customSizeSvg = await customSizeResponse.text();
-    const binaryResponse = await fetch(
-      `http://127.0.0.1:${String(address.port)}/api/field.bin?randomSeed=test-seed&renderWidth=640&renderHeight=480&gridSparseness=20`,
-    );
+    const largeSizeResponse = await postParameters(address.port, "/api/field.svg", {
+      randomSeed: "test-seed",
+      renderWidth: 2500,
+      renderHeight: 1900,
+      gridSparseness: 100,
+      showHeatmap: false,
+      vectorOverlayDensity: 64,
+      swirlDensity: 0,
+    });
+    const largeSizeSvg = await largeSizeResponse.text();
+    const binaryResponse = await postParameters(address.port, "/api/field.bin", {
+      randomSeed: "test-seed",
+      renderWidth: 640,
+      renderHeight: 480,
+      gridSparseness: 20,
+    });
     const binaryBytes = new Uint8Array(await binaryResponse.arrayBuffer());
     const decodedBinary = decodeDisplacementField(binaryBytes);
+    const largeBinaryResponse = await postParameters(address.port, "/api/field.bin", {
+      randomSeed: "test-seed",
+      renderWidth: 2500,
+      renderHeight: 1900,
+      gridSparseness: 100,
+      swirlDensity: 0,
+    });
+    const largeBinaryBytes = new Uint8Array(await largeBinaryResponse.arrayBuffer());
+    const largeDecodedBinary = decodeDisplacementField(largeBinaryBytes);
 
     assert.equal(response.status, 200);
     assert.equal(sparseVectorResponse.status, 200);
@@ -137,7 +177,9 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(tightSwirlResponse.status, 200);
     assert.equal(vectorOnlyResponse.status, 200);
     assert.equal(customSizeResponse.status, 200);
+    assert.equal(largeSizeResponse.status, 200);
     assert.equal(binaryResponse.status, 200);
+    assert.equal(largeBinaryResponse.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /image\/svg\+xml/);
     assert.match(
       binaryResponse.headers.get("content-type") ?? "",
@@ -162,12 +204,67 @@ void test("field endpoint returns generated SVG", async () => {
     assert.match(customSizeSvg, /width="640"/);
     assert.match(customSizeSvg, /height="480"/);
     assert.match(customSizeSvg, /viewBox="0 0 640 480"/);
+    assert.match(largeSizeSvg, /width="2500"/);
+    assert.match(largeSizeSvg, /height="1900"/);
+    assert.match(largeSizeSvg, /viewBox="0 0 2500 1900"/);
     assert.equal(String.fromCharCode(...binaryBytes.slice(0, 4)), "DFLD");
     assert.equal(decodedBinary.metadata.parameters.randomSeed, "test-seed");
     assert.equal(decodedBinary.metadata.renderWidth, 640);
     assert.equal(decodedBinary.metadata.renderHeight, 480);
     assert.deepEqual(decodedBinary.metadata.grid, { width: 32, height: 24 });
     assert.equal(decodedBinary.displacements.length, 32 * 24 * 2);
+    assert.equal(largeDecodedBinary.metadata.renderWidth, 2500);
+    assert.equal(largeDecodedBinary.metadata.renderHeight, 1900);
+    assert.deepEqual(largeDecodedBinary.metadata.grid, { width: 25, height: 19 });
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  }
+});
+
+void test("field endpoints reject invalid parameters with bad request", async () => {
+  const server = createAppServer();
+  await new Promise<void>((resolve) => {
+    server.listen(0, resolve);
+  });
+
+  try {
+    const address = server.address() as AddressInfo;
+    const invalidSvgResponse = await postParameters(address.port, "/api/field.svg", {
+      renderWidth: 0,
+    });
+    const invalidSvgBody = await invalidSvgResponse.text();
+    const invalidBinaryResponse = await postParameters(address.port, "/api/field.bin", {
+      gridSparseness: 0,
+    });
+    const invalidBinaryBody = await invalidBinaryResponse.text();
+    const missingParameterResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ renderWidth: 640 }),
+      },
+    );
+    const missingParameterBody = await missingParameterResponse.text();
+    const wrongMethodResponse = await fetch(
+      `http://127.0.0.1:${String(address.port)}/api/field.svg`,
+    );
+    const wrongMethodBody = await wrongMethodResponse.text();
+
+    assert.equal(invalidSvgResponse.status, 400);
+    assert.match(invalidSvgBody, /Invalid parameter renderWidth: must be >= 1/);
+    assert.equal(invalidBinaryResponse.status, 400);
+    assert.match(invalidBinaryBody, /Invalid parameter gridSparseness: must be >= 1/);
+    assert.equal(missingParameterResponse.status, 400);
+    assert.match(missingParameterBody, /Missing required parameter: renderHeight/);
+    assert.equal(wrongMethodResponse.status, 405);
+    assert.match(wrongMethodBody, /Method Not Allowed/);
   } finally {
     await new Promise<void>((resolve) => {
       server.close(() => {
@@ -221,4 +318,27 @@ void test("rendered arrows use actual displacement geometry", () => {
 
 function countSvgTag(svg: string, tagName: string): number {
   return svg.match(new RegExp(`<${tagName}\\b`, "g"))?.length ?? 0;
+}
+
+async function postParameters(
+  port: number,
+  pathname: "/api/field.svg" | "/api/field.bin",
+  overrides: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(`http://127.0.0.1:${String(port)}${pathname}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(createParameterPayload(overrides)),
+  });
+}
+
+function createParameterPayload(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...DEFAULT_PARAMETERS,
+    ...overrides,
+  };
 }

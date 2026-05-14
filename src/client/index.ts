@@ -1,16 +1,17 @@
 import { decodeDisplacementField } from "../shared/displacementBinary.js";
 import {
   DEFAULT_PARAMETERS,
+} from "../shared/params.js";
+import type { ParameterValues } from "../shared/types.js";
+import {
   normalizeParameters,
   PARAMETER_DEFINITIONS,
   PARAMETER_GROUPS,
-  serializeParameters,
   type BooleanParameterDefinition,
   type NumericParameterDefinition,
   type ParameterDefinition,
   type SeedParameterDefinition,
-} from "../shared/params.js";
-import type { ParameterValues } from "../shared/types.js";
+} from "./parameter-controls.js";
 
 const controlsElement = requireElement("#controls");
 const previewElement = requireElement("#preview");
@@ -207,7 +208,7 @@ function createNumericControl(
   rangeInput.name = definition.key;
   rangeInput.type = "range";
   rangeInput.min = String(definition.min);
-    rangeInput.max = String(definition.max);
+  rangeInput.max = String(definition.max);
   rangeInput.step = String(definition.step);
   rangeInput.value = String(parameters[definition.key]);
 
@@ -348,8 +349,13 @@ async function refreshPreview(parameters: ParameterValues): Promise<void> {
   const requestTimestamp = Date.now();
   latestPreviewRequestAt = requestTimestamp;
   statusElement.textContent = "Rendering";
-  const searchParams = serializeParameters(parameters);
-  const response = await fetch(`/api/field.svg?${searchParams.toString()}`);
+  const response = await fetch("/api/field.svg", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(parameters),
+  });
   if (!response.ok) {
     if (requestTimestamp !== latestPreviewRequestAt) {
       return;
@@ -371,8 +377,13 @@ async function exportBinary(parameters: ParameterValues): Promise<void> {
   setToolbarBusy(true);
 
   try {
-    const searchParams = serializeParameters(parameters);
-    const response = await fetch(`/api/field.bin?${searchParams.toString()}`);
+    const response = await fetch("/api/field.bin", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(parameters),
+    });
     if (!response.ok) {
       statusElement.textContent = "Export failed";
       return;

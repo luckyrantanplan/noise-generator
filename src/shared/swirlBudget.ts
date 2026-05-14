@@ -6,10 +6,8 @@ const EDGE_TRANSITION_START = 0.9;
 const DEGREES_TO_RADIANS = Math.PI / 180;
 const SWIRL_MAX_SAMPLES = 2048;
 
-export const SOFT_SWIRL_SHARE = 0.6;
-export const MATERIAL_PRESENCE_RATIO = 0.1;
-export const MAX_SWIRL_ANGLE_DEGREES = 1440;
-export const MIN_SWIRL_RADIUS_RATIO = 0.03;
+const MAX_SWIRL_ANGLE_DEGREES = 1440;
+const MIN_SWIRL_RADIUS_RATIO = 0.03;
 
 export function swirlAngleEnvelope(
   normalizedDistance: number,
@@ -91,23 +89,10 @@ export function clampSwirlStrengthToForce(
   return lowerBound;
 }
 
-export function maxAllowedSwirlStrengthForParameters(
-  parameters: ParameterValues,
-  maximumStrengthDegrees: number,
-): number {
-  return maxAllowedSwirlStrengthForRadius(
-    parameters.force,
-    maxSwirlRadiusInWorldUnits(parameters),
-    parameters.swirlFalloff,
-    maximumStrengthDegrees,
-  );
-}
-
 export function resolveSwirlStrengthDegrees(
   parameters: ParameterValues,
   radius: number,
 ): number {
-  const clampedStrengthPercent = Math.min(100, Math.max(0, parameters.swirlStrengthPercent));
   const maximumAllowedAngle = maxAllowedSwirlStrengthForRadius(
     parameters.force,
     radius,
@@ -115,7 +100,7 @@ export function resolveSwirlStrengthDegrees(
     MAX_SWIRL_ANGLE_DEGREES,
   );
 
-  return (maximumAllowedAngle * clampedStrengthPercent) / 100;
+  return (maximumAllowedAngle * parameters.swirlStrengthPercent) / 100;
 }
 
 export function maxAllowedSwirlStrengthForRadius(

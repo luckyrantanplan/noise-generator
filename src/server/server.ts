@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { generateDisplacementField } from "../field/composeField.js";
-import { parseParameters } from "../shared/params.js";
+import { ParameterValidationError, parseParameters } from "../shared/params.js";
 import { encodeGeneratedDisplacementField } from "./exportBinary.js";
 import { renderFieldSvg } from "./renderSvg.js";
 
@@ -41,12 +41,20 @@ async function routeRequest(
   }
 
   if (requestUrl.pathname === "/api/field.svg") {
-    serveFieldSvg(requestUrl, response);
+    if (request.method !== "POST") {
+      sendMethodNotAllowed(response);
+      return;
+    }
+    await serveFieldSvg(request, response);
     return;
   }
 
   if (requestUrl.pathname === "/api/field.bin") {
-    serveFieldBinary(requestUrl, response);
+    if (request.method !== "POST") {
+      sendMethodNotAllowed(response);
+      return;
+    }
+    await serveFieldBinary(request, response);
     return;
   }
 
@@ -110,9 +118,12 @@ async function serveBrowserModule(
   }
 }
 
-function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
+async function serveFieldSvg(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
   try {
-    const parameters = parseParameters(requestUrl.searchParams);
+    const parameters = parseParameters(await readJsonBody(request));
     const width = parameters.renderWidth;
     const height = parameters.renderHeight;
     const field = generateDisplacementField(parameters);
@@ -130,13 +141,16 @@ function serveFieldSvg(requestUrl: URL, response: ServerResponse): void {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown render error";
-    sendText(response, 500, message);
+    sendText(response, statusCodeForError(error), message);
   }
 }
 
-function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
+async function serveFieldBinary(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
   try {
-    const parameters = parseParameters(requestUrl.searchParams);
+    const parameters = parseParameters(await readJsonBody(request));
     const field = generateDisplacementField(parameters);
     const bytes = encodeGeneratedDisplacementField(parameters, field);
     response.writeHead(200, {
@@ -148,7 +162,7 @@ function serveFieldBinary(requestUrl: URL, response: ServerResponse): void {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown export error";
-    sendText(response, 500, message);
+    sendText(response, statusCodeForError(error), message);
   }
 }
 
@@ -184,6 +198,58 @@ function sendText(
     "content-type": "text/plain; charset=utf-8",
   });
   response.end(message);
+}
+
+function statusCodeForError(error: unknown): number {
+  if (error instanceof ParameterValidationError || error instanceof RangeError) {
+    return 400;
+  }
+
+  return 500;
+}
+
+function sendMethodNotAllowed(response: ServerResponse): void {
+  response.writeHead(405, {
+    allow: "POST",
+    "content-type": "text/plain; charset=utf-8",
+  });
+  response.end("Method Not Allowed");
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const contentType = request.headers["content-type"];
+  if (
+    typeof contentType !== "string" ||
+    !contentType.toLowerCase().includes("application/json")
+  ) {
+    throw new ParameterValidationError("Request body must use application/json");
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    if (typeof chunk === "string") {
+      chunks.push(Buffer.from(chunk));
+      continue;
+    }
+
+    if (chunk instanceof Uint8Array) {
+      chunks.push(Buffer.from(chunk));
+      continue;
+    }
+
+    throw new ParameterValidationError("Request body must be valid JSON");
+  }
+
+  const rawBody = Buffer.concat(chunks).toString("utf-8").trim();
+  if (rawBody.length === 0) {
+    throw new ParameterValidationError("Request body must be valid JSON");
+  }
+
+  try {
+    return JSON.parse(rawBody) as unknown;
+  } catch {
+    throw new ParameterValidationError("Request body must be valid JSON");
+  }
 }
 
 function isMainModule(): boolean {

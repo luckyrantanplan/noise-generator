@@ -1,7 +1,5 @@
-import { DEFAULT_PARAMETERS, normalizeParameters } from "../shared/params.js";
+import { DEFAULT_PARAMETERS, validateParameters } from "../shared/params.js";
 import {
-  MATERIAL_PRESENCE_RATIO,
-  SOFT_SWIRL_SHARE,
 } from "../shared/swirlBudget.js";
 import type {
   GridSpec,
@@ -15,10 +13,13 @@ import { SeededRandom } from "./hashSeed.js";
 import { generateWhiteNoise, applySpectralFilter } from "./spectralNoise.js";
 import { evaluateSwirlInfluence } from "./swirls.js";
 
+const SOFT_SWIRL_SHARE = 0.6;
+const MATERIAL_PRESENCE_RATIO = 0.1;
+
 export function generateDisplacementField(
   parameters: ParameterValues,
 ): VectorField {
-  const normalizedParameters = normalizeParameters(parameters);
+  const normalizedParameters = validateParameters(parameters);
   const grid = createGridFromSparseness(
     normalizedParameters.renderWidth,
     normalizedParameters.renderHeight,
@@ -32,7 +33,7 @@ export function generateVectorField(
   parameters: ParameterValues,
   suppliedGrid: GridSpec,
 ): VectorField {
-  const normalizedParameters = normalizeParameters(parameters);
+  const normalizedParameters = validateParameters(parameters);
   const grid = createGrid(suppliedGrid.width, suppliedGrid.height);
   const magnitudeRandom = new SeededRandom(
     `${normalizedParameters.randomSeed}:magnitude`,
