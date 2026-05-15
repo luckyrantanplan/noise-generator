@@ -27,9 +27,11 @@ import {
 import {
   DEFAULT_PARAMETERS,
   MAX_CUTOFF_PERCENT,
+  MAX_SILENCE_CUTOFF_PERCENT,
   validateParameters,
   parseParameters,
   MIN_CUTOFF_PERCENT,
+  MIN_SILENCE_CUTOFF_PERCENT,
 } from "../src/shared/params.js";
 import {
   maxSwirlRadiusInWorldUnits,
@@ -549,6 +551,7 @@ void test("parameter parsing preserves valid numeric values exactly", () => {
     renderHeight: 9,
     force: 99999,
     scale: 999,
+    silenceCutoffPercent: 123,
     gridSparseness: 2,
     amplitudeContrast: 1.5,
     spectralSlopeDbPerOct: 999,
@@ -569,6 +572,7 @@ void test("parameter parsing preserves valid numeric values exactly", () => {
   assert.equal(parsedParameters.renderHeight, 9);
   assert.equal(parsedParameters.force, 99999);
   assert.equal(parsedParameters.scale, 999);
+  assert.equal(parsedParameters.silenceCutoffPercent, 123);
   assert.equal(parsedParameters.gridSparseness, 2);
   assert.equal(parsedParameters.spectralSlopeDbPerOct, 999);
   assert.equal(parsedParameters.amplitudeContrast, 1.5);
@@ -643,6 +647,7 @@ void test("spectral filtering normalizes noise into unit range", () => {
   const noise = generateWhiteNoise({ width: 8, height: 8 }, random);
   const filtered = applySpectralFilter(noise, {
     cutoffPercent: DEFAULT_PARAMETERS.scale,
+    silenceCutoffPercent: DEFAULT_PARAMETERS.silenceCutoffPercent,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -657,6 +662,7 @@ void test("spectral filtering supports non-power-of-two grids", () => {
   const noise = generateWhiteNoise({ width: 96, height: 72 }, random);
   const filtered = applySpectralFilter(noise, {
     cutoffPercent: DEFAULT_PARAMETERS.scale,
+    silenceCutoffPercent: DEFAULT_PARAMETERS.silenceCutoffPercent,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
@@ -673,10 +679,12 @@ void test("higher spectral slope smooths the filtered field", () => {
   const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
   const lowSlope = applySpectralFilter(noise, {
     cutoffPercent: DEFAULT_PARAMETERS.scale,
+    silenceCutoffPercent: DEFAULT_PARAMETERS.silenceCutoffPercent,
     spectralSlopeDbPerOct: 0,
   });
   const highSlope = applySpectralFilter(noise, {
     cutoffPercent: DEFAULT_PARAMETERS.scale,
+    silenceCutoffPercent: DEFAULT_PARAMETERS.silenceCutoffPercent,
     spectralSlopeDbPerOct: 9,
   });
 
@@ -688,16 +696,32 @@ void test("higher cutoff percent preserves finer spatial variation", () => {
   const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
   const lowCutoff = applySpectralFilter(noise, {
     cutoffPercent: MIN_CUTOFF_PERCENT,
+    silenceCutoffPercent: MAX_SILENCE_CUTOFF_PERCENT,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
   const highCutoff = applySpectralFilter(noise, {
     cutoffPercent: MAX_CUTOFF_PERCENT,
+    silenceCutoffPercent: MAX_SILENCE_CUTOFF_PERCENT,
     spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
   });
 
   assert.ok(
     measureFieldRoughness(highCutoff) > measureFieldRoughness(lowCutoff),
   );
+});
+
+void test("silence cutoff removes all non-DC frequency content beyond the threshold", () => {
+  const random = new SeededRandom("silence-cutoff");
+  const noise = generateWhiteNoise({ width: 32, height: 32 }, random);
+  const silenced = applySpectralFilter(noise, {
+    cutoffPercent: DEFAULT_PARAMETERS.scale,
+    silenceCutoffPercent: MIN_SILENCE_CUTOFF_PERCENT,
+    spectralSlopeDbPerOct: DEFAULT_PARAMETERS.spectralSlopeDbPerOct,
+  });
+
+  for (const value of silenced.values) {
+    assert.ok(Math.abs(value - 0.5) < 1e-6);
+  }
 });
 
 void test("grid sparseness maps SVG units to grid dimensions", () => {

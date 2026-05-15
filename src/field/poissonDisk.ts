@@ -41,6 +41,7 @@ export function sampleSwirlCenters(
     renderHeight: options.renderHeight,
     force: options.force,
     scale: 0,
+    silenceCutoffPercent: 100,
     gridSparseness: 1,
     showHeatmap: true,
     vectorOverlayDensity: 1,

@@ -3,6 +3,7 @@ export interface ParameterValues {
   renderHeight: number;
   force: number;
   scale: number;
+  silenceCutoffPercent: number;
   gridSparseness: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;

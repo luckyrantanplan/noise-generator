@@ -2,10 +2,12 @@ import {
   DEFAULT_PARAMETERS,
   MAX_CUTOFF_PERCENT,
   MAX_FORCE,
+  MAX_SILENCE_CUTOFF_PERCENT,
   MAX_SPECTRAL_SLOPE_DB_PER_OCT,
   MAX_SWIRL_MINIMUM_ANGLE_DEGREES,
   MAX_SWIRL_STRENGTH_PERCENT,
   MIN_CUTOFF_PERCENT,
+  MIN_SILENCE_CUTOFF_PERCENT,
   MIN_SWIRL_MINIMUM_ANGLE_DEGREES,
 } from "../shared/params.js";
 import type { ParameterValues } from "../shared/types.js";
@@ -117,6 +119,17 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
       "Sets the shared cutoff as a percentage of the longest grid side for both magnitude and direction fields. Higher percentages preserve finer detail; lower percentages produce smoother, broader structure.",
     min: MIN_CUTOFF_PERCENT,
     max: MAX_CUTOFF_PERCENT,
+    step: 0.1,
+    integer: false,
+  },
+  {
+    group: "field",
+    key: "silenceCutoffPercent",
+    label: "Fsilence (%)",
+    description:
+      "Hard cutoff as a percent of the longest grid side for both magnitude and direction fields. Frequencies above this radius are forced to zero.",
+    min: MIN_SILENCE_CUTOFF_PERCENT,
+    max: MAX_SILENCE_CUTOFF_PERCENT,
     step: 0.1,
     integer: false,
   },

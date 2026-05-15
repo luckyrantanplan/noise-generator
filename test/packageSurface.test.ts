@@ -16,6 +16,7 @@ void test("root package exports the supported generation and schema API", () => 
     renderHeight: 240,
     force: 80,
     scale: 4.5,
+    silenceCutoffPercent: 100,
     gridSparseness: 20,
     showHeatmap: true,
     vectorOverlayDensity: 16,

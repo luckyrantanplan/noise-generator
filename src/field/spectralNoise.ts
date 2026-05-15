@@ -4,6 +4,7 @@ import type { SeededRandom } from "./hashSeed.js";
 
 interface SpectralOptions {
   cutoffPercent: number;
+  silenceCutoffPercent: number;
   spectralSlopeDbPerOct: number;
 }
 
@@ -163,6 +164,13 @@ function spectralEnvelope(
     1,
     (options.cutoffPercent / 100) * longestSide,
   );
+  const silenceCutoffFrequency = Math.max(
+    0,
+    (options.silenceCutoffPercent / 100) * longestSide,
+  );
+  if (radius > silenceCutoffFrequency) {
+    return 0;
+  }
   const normalizedRadius = radius / cornerFrequency;
   const powerSlope =
     options.spectralSlopeDbPerOct / DB_PER_OCTAVE_FOR_UNIT_POWER_SLOPE;

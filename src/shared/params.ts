@@ -12,6 +12,8 @@ export const MAX_FORCE = 1440;
 export const MAX_SPECTRAL_SLOPE_DB_PER_OCT = 12;
 export const MIN_CUTOFF_PERCENT = 0;
 export const MAX_CUTOFF_PERCENT = 100;
+export const MIN_SILENCE_CUTOFF_PERCENT = 0;
+export const MAX_SILENCE_CUTOFF_PERCENT = 100;
 export const MIN_SWIRL_MINIMUM_ANGLE_DEGREES = 5;
 export const MAX_SWIRL_MINIMUM_ANGLE_DEGREES = 180;
 export const MAX_SWIRL_STRENGTH_PERCENT = 100;
@@ -21,6 +23,7 @@ export const DEFAULT_PARAMETERS: ParameterValues = {
   renderHeight: 720,
   force: 80,
   scale: 4.5,
+  silenceCutoffPercent: 100,
   gridSparseness: 15,
   showHeatmap: true,
   vectorOverlayDensity: 16,
@@ -43,6 +46,7 @@ const parameterSchema: JSONSchemaType<ParameterValues> = {
     "renderHeight",
     "force",
     "scale",
+    "silenceCutoffPercent",
     "gridSparseness",
     "showHeatmap",
     "vectorOverlayDensity",
@@ -61,6 +65,7 @@ const parameterSchema: JSONSchemaType<ParameterValues> = {
     renderHeight: { type: "integer", minimum: 1 },
     force: { type: "number" },
     scale: { type: "number" },
+    silenceCutoffPercent: { type: "number" },
     gridSparseness: { type: "integer", minimum: 1 },
     showHeatmap: { type: "boolean" },
     vectorOverlayDensity: { type: "integer", minimum: 1 },

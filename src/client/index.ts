@@ -458,6 +458,7 @@ function parameterValuesEqual(
     left.renderHeight === right.renderHeight &&
     left.force === right.force &&
     left.scale === right.scale &&
+    left.silenceCutoffPercent === right.silenceCutoffPercent &&
     left.gridSparseness === right.gridSparseness &&
     left.showHeatmap === right.showHeatmap &&
     left.vectorOverlayDensity === right.vectorOverlayDensity &&
