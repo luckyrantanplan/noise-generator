@@ -14,7 +14,6 @@ import {
 } from "../src/field/poissonDisk.js";
 import { SeededRandom } from "../src/field/hashSeed.js";
 import {
-  composeWithSharedBudget,
   generateDisplacementField,
   generateVectorField,
 } from "../src/field/composeField.js";
@@ -28,11 +27,13 @@ import {
   DEFAULT_PARAMETERS,
   MAX_CUTOFF_PERCENT,
   MAX_SILENCE_CUTOFF_PERCENT,
-  validateParameters,
-  parseParameters,
   MIN_CUTOFF_PERCENT,
   MIN_SILENCE_CUTOFF_PERCENT,
 } from "../src/shared/params.js";
+import {
+  parseParameters,
+  validateParameters,
+} from "../src/server/parameterValidation.js";
 import {
   maxSwirlRadiusInWorldUnits,
   minSwirlRadiusInWorldUnits,
@@ -373,24 +374,6 @@ void test("swirl influence stays isotropic on rectangular grids", () => {
   assert.ok(Math.abs(horizontalMagnitude - verticalMagnitude) < 0.01);
 });
 
-void test("shared budget allocator preserves subcritical requested vectors", () => {
-  const composed = composeWithSharedBudget(18, 0, 12, 0, 40);
-
-  assert.ok(Math.abs(composed.x - 30) < 1e-9);
-  assert.ok(Math.abs(composed.y) < 1e-9);
-});
-
-void test("shared budget allocator blends toward a swirl-heavy ratio under overload", () => {
-  const composed = composeWithSharedBudget(35, 0, 0, 25, 40);
-  const requestedShare = 35 / (35 + 25);
-  const overload = (Math.hypot(35, 25) - 40) / 40;
-  const swirlShare = requestedShare + (0.6 - requestedShare) * overload;
-  const noiseShare = 1 - swirlShare;
-
-  assert.ok(Math.abs(composed.x - swirlShare * 40) < 1e-9);
-  assert.ok(Math.abs(composed.y - noiseShare * 40) < 1e-9);
-});
-
 void test("swirl displacement stays isotropic on wide render sizes", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
@@ -484,6 +467,36 @@ void test("force-resolved swirl angle shrinks as radius grows", () => {
   assert.ok(largeRadiusAngle < compactRadiusAngle);
 });
 
+void test("force-resolved swirl angle shrinks as direction noise mix grows", () => {
+  const baseParameters = {
+    ...DEFAULT_PARAMETERS,
+    force: 40,
+    renderWidth: 960,
+    renderHeight: 720,
+    swirlMinimumAngleDegrees: 180,
+    swirlStrengthPercent: 100,
+    swirlFalloff: 1,
+  };
+  const lowNoiseAngle = resolveSwirlStrengthDegrees(
+    {
+      ...baseParameters,
+      directionNoiseMix: 0,
+    },
+    20,
+  );
+  const highNoiseAngle = resolveSwirlStrengthDegrees(
+    {
+      ...baseParameters,
+      directionNoiseMix: 0.8,
+    },
+    20,
+  );
+
+  assert.ok(lowNoiseAngle > 0);
+  assert.ok(highNoiseAngle >= 0);
+  assert.ok(highNoiseAngle < lowNoiseAngle);
+});
+
 void test("generated field magnitudes stay within force", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
@@ -500,8 +513,36 @@ void test("generated field magnitudes stay within force", () => {
     height: 25,
   });
 
+  assert.equal(generatedField.maximumDisplacementMagnitude, parameters.force);
+
   for (const value of generatedField.magnitude) {
     assert.ok(value <= parameters.force + 1e-5);
+  }
+});
+
+void test("generated field magnitudes match final displacement components", () => {
+  const generatedField = generateVectorField(
+    {
+      ...DEFAULT_PARAMETERS,
+      force: 55,
+      swirlDensity: 18,
+      directionNoiseMix: 0.35,
+      randomSeed: "final-displacement-fidelity",
+    },
+    {
+      width: 29,
+      height: 21,
+    },
+  );
+
+  for (let index = 0; index < generatedField.magnitude.length; index += 1) {
+    const expectedMagnitude = Math.hypot(
+      generatedField.displacementX[index],
+      generatedField.displacementY[index],
+    );
+    assert.ok(
+      Math.abs(generatedField.magnitude[index] - expectedMagnitude) < 1e-5,
+    );
   }
 });
 
@@ -588,58 +629,38 @@ void test("parameter parsing preserves valid numeric values exactly", () => {
 });
 
 void test("parameter parsing requires every parameter", () => {
-  assert.throws(
-    () => {
-      parseParameters(
-        {
-          renderWidth: "640",
-        },
-      );
-    },
-    /Missing required parameter: renderHeight/,
-  );
+  assert.throws(() => {
+    parseParameters({
+      renderWidth: "640",
+    });
+  }, /Missing required parameter: renderHeight/);
 });
 
 void test("parameter parsing rejects non-computable numeric values", () => {
-  assert.throws(
-    () => {
-      parseParameters(createParameterObject({ renderHeight: 0 }));
-    },
-    /Invalid parameter renderHeight: must be >= 1/,
-  );
+  assert.throws(() => {
+    parseParameters(createParameterObject({ renderHeight: 0 }));
+  }, /Invalid parameter renderHeight: must be >= 1/);
 
-  assert.throws(
-    () => {
-      parseParameters(createParameterObject({ gridSparseness: 0 }));
-    },
-    /Invalid parameter gridSparseness: must be >= 1/,
-  );
+  assert.throws(() => {
+    parseParameters(createParameterObject({ gridSparseness: 0 }));
+  }, /Invalid parameter gridSparseness: must be >= 1/);
 
-  assert.throws(
-    () => {
-      parseParameters(createParameterObject({ amplitudeContrast: -1 }));
-    },
-    /Invalid parameter amplitudeContrast: must be >= 0/,
-  );
+  assert.throws(() => {
+    parseParameters(createParameterObject({ amplitudeContrast: -1 }));
+  }, /Invalid parameter amplitudeContrast: must be >= 0/);
 
-  assert.throws(
-    () => {
-      parseParameters(createParameterObject({ showHeatmap: "maybe" }));
-    },
-    /Invalid parameter showHeatmap: must be boolean/,
-  );
+  assert.throws(() => {
+    parseParameters(createParameterObject({ showHeatmap: "maybe" }));
+  }, /Invalid parameter showHeatmap: must be boolean/);
 });
 
 void test("schema validation rejects null parameter values", () => {
-  assert.throws(
-    () => {
-      validateParameters({
-        ...DEFAULT_PARAMETERS,
-        renderWidth: null,
-      });
-    },
-    /Invalid parameter renderWidth: must be integer/,
-  );
+  assert.throws(() => {
+    validateParameters({
+      ...DEFAULT_PARAMETERS,
+      renderWidth: null,
+    });
+  }, /Invalid parameter renderWidth: must be integer/);
 });
 
 void test("spectral filtering normalizes noise into unit range", () => {

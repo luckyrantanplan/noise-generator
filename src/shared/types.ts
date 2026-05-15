@@ -43,6 +43,7 @@ export interface VectorField {
   displacementX: Float32Array;
   displacementY: Float32Array;
   magnitude: Float32Array;
+  maximumDisplacementMagnitude: number;
   swirls: SwirlCenter[];
 }
 

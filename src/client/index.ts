@@ -1,7 +1,5 @@
 import { decodeDisplacementField } from "../shared/displacementBinary.js";
-import {
-  DEFAULT_PARAMETERS,
-} from "../shared/params.js";
+import { DEFAULT_PARAMETERS } from "../shared/params.js";
 import type { ParameterValues } from "../shared/types.js";
 import {
   normalizeParameters,

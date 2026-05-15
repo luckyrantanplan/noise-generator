@@ -3,7 +3,7 @@ import type {
   ParameterValues,
   SwirlCenter,
 } from "../shared/types.js";
-import { swirlAngleEnvelope } from "../shared/swirlBudget.js";
+import { swirlAngleEnvelope, swirlNoiseGain } from "../shared/swirlBudget.js";
 import {
   indexAt,
   normalizedCoordinate,
@@ -79,7 +79,7 @@ function accumulateSwirlsAtPoint(
       normalizedDistance,
       parameters.swirlFalloff,
     );
-    const localNoiseGain = centerNoiseGain(normalizedDistance);
+    const localNoiseGain = swirlNoiseGain(normalizedDistance);
     noiseGain[scalarIndex] = Math.min(noiseGain[scalarIndex], localNoiseGain);
     if (angleEnvelope <= 1e-6) {
       continue;
@@ -100,21 +100,6 @@ function accumulateSwirlsAtPoint(
     vectorY[scalarIndex] += chord.y / metricScales.yScale;
     weight[scalarIndex] += angleEnvelope;
   }
-}
-function centerNoiseGain(normalizedDistance: number): number {
-  return smoothstep(0, 1, normalizedDistance);
-}
-
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  if (value <= edge0) {
-    return 0;
-  }
-  if (value >= edge1) {
-    return 1;
-  }
-
-  const normalizedValue = (value - edge0) / (edge1 - edge0);
-  return normalizedValue * normalizedValue * (3 - 2 * normalizedValue);
 }
 
 function rotateOffsetByAngle(

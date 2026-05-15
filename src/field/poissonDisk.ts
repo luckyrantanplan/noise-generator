@@ -1,5 +1,9 @@
 import { clamp } from "../shared/params.js";
-import type { GridSpec, ParameterValues, SwirlCenter } from "../shared/types.js";
+import type {
+  GridSpec,
+  ParameterValues,
+  SwirlCenter,
+} from "../shared/types.js";
 import {
   maxSwirlRadiusInWorldUnits,
   minSwirlRadiusInWorldUnits,
@@ -32,7 +36,11 @@ export function sampleSwirlCenters(
   options: PoissonOptions,
   random: SeededRandom,
 ): SwirlCenter[] {
-  if (options.density <= 0 || options.strengthPercent <= 0 || options.force <= 0) {
+  if (
+    options.density <= 0 ||
+    options.strengthPercent <= 0 ||
+    options.force <= 0
+  ) {
     return [];
   }
 
@@ -82,7 +90,10 @@ export function sampleSwirlCenters(
       positionX: disk.x / metricScales.xScale,
       positionY: disk.y / metricScales.yScale,
       radius: disk.r,
-      strengthDegrees: resolveSwirlStrengthDegrees(parameterProxy, radiusInWorldUnits),
+      strengthDegrees: resolveSwirlStrengthDegrees(
+        parameterProxy,
+        radiusInWorldUnits,
+      ),
       direction,
     };
   });

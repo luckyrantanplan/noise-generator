@@ -19,7 +19,7 @@ export function renderFieldSvg(
   field: VectorField,
   options: RenderOptions,
 ): string {
-  const maximumMagnitude = maxDisplayedMagnitude(field);
+  const maximumMagnitude = displayMagnitudeReference(field);
   const cellWidth = options.width / field.grid.width;
   const cellHeight = options.height / field.grid.height;
   const heatmap = options.showHeatmap
@@ -180,16 +180,15 @@ function displayMagnitudeRatio(
   return Math.min(1, Math.max(0, magnitude / maximumMagnitude));
 }
 
-function maxDisplayedMagnitude(field: VectorField): number {
-  let maximumMagnitude = 1;
-
-  for (const magnitude of field.magnitude) {
-    if (magnitude > maximumMagnitude) {
-      maximumMagnitude = magnitude;
-    }
+function displayMagnitudeReference(field: VectorField): number {
+  if (
+    Number.isFinite(field.maximumDisplacementMagnitude) &&
+    field.maximumDisplacementMagnitude > Number.EPSILON
+  ) {
+    return field.maximumDisplacementMagnitude;
   }
 
-  return maximumMagnitude;
+  return 1;
 }
 
 function formatNumber(value: number): string {

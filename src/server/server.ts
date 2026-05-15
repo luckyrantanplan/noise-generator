@@ -1,13 +1,21 @@
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { generateDisplacementField } from "../field/composeField.js";
-import { ParameterValidationError, parseParameters } from "../shared/params.js";
 import { encodeGeneratedDisplacementField } from "./exportBinary.js";
+import {
+  ParameterValidationError,
+  parseParameters,
+} from "./parameterValidation.js";
 import { renderFieldSvg } from "./renderSvg.js";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -201,7 +209,10 @@ function sendText(
 }
 
 function statusCodeForError(error: unknown): number {
-  if (error instanceof ParameterValidationError || error instanceof RangeError) {
+  if (
+    error instanceof ParameterValidationError ||
+    error instanceof RangeError
+  ) {
     return 400;
   }
 
@@ -222,7 +233,9 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
     typeof contentType !== "string" ||
     !contentType.toLowerCase().includes("application/json")
   ) {
-    throw new ParameterValidationError("Request body must use application/json");
+    throw new ParameterValidationError(
+      "Request body must use application/json",
+    );
   }
 
   const chunks: Buffer[] = [];

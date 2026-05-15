@@ -22,6 +22,10 @@ export function swirlAngleEnvelope(
   return innerGain * Math.pow(Math.max(0, edgeBase), swirlFalloff);
 }
 
+export function swirlNoiseGain(normalizedDistance: number): number {
+  return smoothstep(0, 1, normalizedDistance);
+}
+
 export function maxSwirlChordLength(
   radius: number,
   strengthDegrees: number,
@@ -39,10 +43,12 @@ export function maxSwirlChordLength(
     sampleIndex += 1
   ) {
     const normalizedDistance = sampleIndex / SWIRL_MAX_SAMPLES;
-    const envelope = swirlAngleEnvelope(normalizedDistance, swirlFalloff);
-    const angle = strengthDegrees * DEGREES_TO_RADIANS * envelope;
-    const chordLength =
-      2 * normalizedDistance * radius * Math.abs(Math.sin(angle / 2));
+    const chordLength = swirlChordLengthAtDistance(
+      radius,
+      strengthDegrees,
+      swirlFalloff,
+      normalizedDistance,
+    );
 
     if (chordLength > maximumChord) {
       maximumChord = chordLength;
@@ -93,14 +99,31 @@ export function resolveSwirlStrengthDegrees(
   parameters: ParameterValues,
   radius: number,
 ): number {
-  const maximumAllowedAngle = maxAllowedSwirlStrengthForRadius(
+  const maximumAllowedAngle = maxAllowedSharedSwirlStrengthForRadius(
     parameters.force,
     radius,
     parameters.swirlFalloff,
+    parameters.directionNoiseMix,
     MAX_SWIRL_ANGLE_DEGREES,
   );
 
   return (maximumAllowedAngle * parameters.swirlStrengthPercent) / 100;
+}
+
+function maxAllowedSharedSwirlStrengthForRadius(
+  force: number,
+  radius: number,
+  swirlFalloff: number,
+  directionNoiseMix: number,
+  maximumStrengthDegrees: number,
+): number {
+  return clampSwirlStrengthToSharedBudget(
+    maximumStrengthDegrees,
+    force,
+    radius,
+    swirlFalloff,
+    directionNoiseMix,
+  );
 }
 
 export function maxAllowedSwirlStrengthForRadius(
@@ -117,7 +140,55 @@ export function maxAllowedSwirlStrengthForRadius(
   );
 }
 
-export function maxSwirlRadiusInWorldUnits(parameters: ParameterValues): number {
+function clampSwirlStrengthToSharedBudget(
+  requestedStrengthDegrees: number,
+  force: number,
+  radius: number,
+  swirlFalloff: number,
+  directionNoiseMix: number,
+): number {
+  if (requestedStrengthDegrees <= 0 || force <= 0 || radius <= 0) {
+    return 0;
+  }
+
+  if (
+    maxSwirlDemandWithNoise(
+      radius,
+      requestedStrengthDegrees,
+      swirlFalloff,
+      directionNoiseMix,
+      force,
+    ) <= force
+  ) {
+    return requestedStrengthDegrees;
+  }
+
+  let lowerBound = 0;
+  let upperBound = requestedStrengthDegrees;
+
+  for (let iteration = 0; iteration < 32; iteration += 1) {
+    const midpoint = (lowerBound + upperBound) / 2;
+    const midpointDemand = maxSwirlDemandWithNoise(
+      radius,
+      midpoint,
+      swirlFalloff,
+      directionNoiseMix,
+      force,
+    );
+
+    if (midpointDemand <= force) {
+      lowerBound = midpoint;
+    } else {
+      upperBound = midpoint;
+    }
+  }
+
+  return lowerBound;
+}
+
+export function maxSwirlRadiusInWorldUnits(
+  parameters: ParameterValues,
+): number {
   const chordFactor = maxSwirlChordLength(
     1,
     parameters.swirlMinimumAngleDegrees,
@@ -134,11 +205,63 @@ export function maxSwirlRadiusInWorldUnits(parameters: ParameterValues): number 
   );
 }
 
-export function minSwirlRadiusInWorldUnits(parameters: ParameterValues): number {
+export function minSwirlRadiusInWorldUnits(
+  parameters: ParameterValues,
+): number {
   return Math.min(
     maxSwirlRadiusInWorldUnits(parameters),
-    Math.min(parameters.renderWidth, parameters.renderHeight) * MIN_SWIRL_RADIUS_RATIO,
+    Math.min(parameters.renderWidth, parameters.renderHeight) *
+      MIN_SWIRL_RADIUS_RATIO,
   );
+}
+
+function maxSwirlDemandWithNoise(
+  radius: number,
+  strengthDegrees: number,
+  swirlFalloff: number,
+  directionNoiseMix: number,
+  force: number,
+): number {
+  let maximumDemand = 0;
+
+  for (
+    let sampleIndex = 0;
+    sampleIndex <= SWIRL_MAX_SAMPLES;
+    sampleIndex += 1
+  ) {
+    const normalizedDistance = sampleIndex / SWIRL_MAX_SAMPLES;
+    const chordLength = swirlChordLengthAtDistance(
+      radius,
+      strengthDegrees,
+      swirlFalloff,
+      normalizedDistance,
+    );
+    const noiseDemand =
+      force * reservedNoiseRatio(normalizedDistance, directionNoiseMix);
+
+    maximumDemand = Math.max(maximumDemand, chordLength + noiseDemand);
+  }
+
+  return maximumDemand;
+}
+
+function reservedNoiseRatio(
+  normalizedDistance: number,
+  directionNoiseMix: number,
+): number {
+  const noiseMix = clamp01(directionNoiseMix);
+  return noiseMix + (1 - noiseMix) * swirlNoiseGain(normalizedDistance);
+}
+
+function swirlChordLengthAtDistance(
+  radius: number,
+  strengthDegrees: number,
+  swirlFalloff: number,
+  normalizedDistance: number,
+): number {
+  const envelope = swirlAngleEnvelope(normalizedDistance, swirlFalloff);
+  const angle = strengthDegrees * DEGREES_TO_RADIANS * envelope;
+  return 2 * normalizedDistance * radius * Math.abs(Math.sin(angle / 2));
 }
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -151,4 +274,8 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
 
   const normalizedValue = (value - edge0) / (edge1 - edge0);
   return normalizedValue * normalizedValue * (3 - 2 * normalizedValue);
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
