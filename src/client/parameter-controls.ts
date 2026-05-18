@@ -3,7 +3,6 @@ import {
   MAX_CUTOFF_PERCENT,
   MAX_SILENCE_CUTOFF_PERCENT,
   MAX_SPECTRAL_SLOPE_DB_PER_OCT,
-  MAX_TARGET_TURN_ANGLE_DEGREES,
   MAX_TRACE_LENGTH,
   MIN_CUTOFF_PERCENT,
   MIN_SILENCE_CUTOFF_PERCENT,
@@ -76,6 +75,7 @@ export type ParameterDefinition =
 
 const MAX_RENDER_WIDTH = 1920;
 const MAX_RENDER_HEIGHT = 1440;
+const UI_MAX_TARGET_TURN_ANGLE_DEGREES = 180;
 
 export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
   {
@@ -118,7 +118,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     description:
       "Stop tracing once the net turning angle from the initial isoline direction reaches this threshold, unless the max trace length is hit first.",
     min: MIN_TARGET_TURN_ANGLE_DEGREES,
-    max: MAX_TARGET_TURN_ANGLE_DEGREES,
+    max: UI_MAX_TARGET_TURN_ANGLE_DEGREES,
     step: 1,
     integer: false,
   },

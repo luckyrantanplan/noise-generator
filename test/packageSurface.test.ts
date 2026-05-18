@@ -33,6 +33,12 @@ void test("root package exports the supported generation and schema API", () => 
   assert.equal(DEFAULT_PARAMETERS.renderWidth, 960);
   assert.equal(PARAMETER_GROUPS.length, 4);
   assert.ok(PARAMETER_DEFINITIONS.length > 0);
+  const targetTurnAngleDefinition = PARAMETER_DEFINITIONS.find(
+    (definition) => definition.key === "targetTurnAngleDegrees",
+  );
+  assert.ok(targetTurnAngleDefinition !== undefined);
+  assert.ok("max" in targetTurnAngleDefinition);
+  assert.equal(targetTurnAngleDefinition.max, 180);
   assert.deepEqual(wrappedField.grid, { width: 16, height: 12 });
   assert.equal(wrappedField.magnitude.length, 16 * 12);
   assert.deepEqual(preview.parameters.showHeatmap, false);
