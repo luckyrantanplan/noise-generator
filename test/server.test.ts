@@ -6,7 +6,7 @@ import { renderFieldSvg } from "../src/server/renderSvg.js";
 import { createAppServer } from "../src/server/server.js";
 import { decodeDisplacementField } from "../src/shared/displacementBinary.js";
 import { DEFAULT_PARAMETERS } from "../src/shared/params.js";
-import type { VectorField } from "../src/shared/types.js";
+import type { ScalarField, VectorField } from "../src/shared/types.js";
 
 void test("html and browser module routes are served from source", async () => {
   const server = createAppServer();
@@ -88,7 +88,7 @@ void test("field endpoint returns generated SVG", async () => {
     const address = server.address() as AddressInfo;
     const response = await postParameters(address.port, "/api/field.svg", {
       randomSeed: "test-seed",
-      force: 20,
+      maxTraceLength: 20,
     });
     const svg = await response.text();
     const sparseVectorResponse = await postParameters(
@@ -96,7 +96,7 @@ void test("field endpoint returns generated SVG", async () => {
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 20,
+        maxTraceLength: 20,
         vectorOverlayDensity: 8,
       },
     );
@@ -106,7 +106,7 @@ void test("field endpoint returns generated SVG", async () => {
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 20,
+        maxTraceLength: 20,
         gridSparseness: 10,
       },
     );
@@ -116,7 +116,7 @@ void test("field endpoint returns generated SVG", async () => {
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 20,
+        maxTraceLength: 20,
         gridSparseness: 20,
       },
     );
@@ -126,7 +126,7 @@ void test("field endpoint returns generated SVG", async () => {
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 10,
+        maxTraceLength: 10,
         showHeatmap: false,
       },
     );
@@ -136,35 +136,35 @@ void test("field endpoint returns generated SVG", async () => {
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 60,
+        maxTraceLength: 60,
         showHeatmap: false,
       },
     );
     const highForceSvg = await highForceResponse.text();
-    const wideSwirlResponse = await postParameters(
+    const tightTurnResponse = await postParameters(
       address.port,
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        swirlMinimumAngleDegrees: 30,
+        targetTurnAngleDegrees: 30,
       },
     );
-    const wideSwirlSvg = await wideSwirlResponse.text();
-    const tightSwirlResponse = await postParameters(
+    const tightTurnSvg = await tightTurnResponse.text();
+    const wideTurnResponse = await postParameters(
       address.port,
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        swirlMinimumAngleDegrees: 180,
+        targetTurnAngleDegrees: 180,
       },
     );
-    const tightSwirlSvg = await tightSwirlResponse.text();
+    const wideTurnSvg = await wideTurnResponse.text();
     const vectorOnlyResponse = await postParameters(
       address.port,
       "/api/field.svg",
       {
         randomSeed: "test-seed",
-        force: 20,
+        maxTraceLength: 20,
         showHeatmap: false,
       },
     );
@@ -189,7 +189,6 @@ void test("field endpoint returns generated SVG", async () => {
         gridSparseness: 100,
         showHeatmap: false,
         vectorOverlayDensity: 64,
-        swirlDensity: 0,
       },
     );
     const largeSizeSvg = await largeSizeResponse.text();
@@ -213,7 +212,6 @@ void test("field endpoint returns generated SVG", async () => {
         renderWidth: 2500,
         renderHeight: 1900,
         gridSparseness: 100,
-        swirlDensity: 0,
       },
     );
     const largeBinaryBytes = new Uint8Array(
@@ -227,8 +225,8 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(coarseGridResponse.status, 200);
     assert.equal(lowForceResponse.status, 200);
     assert.equal(highForceResponse.status, 200);
-    assert.equal(wideSwirlResponse.status, 200);
-    assert.equal(tightSwirlResponse.status, 200);
+    assert.equal(tightTurnResponse.status, 200);
+    assert.equal(wideTurnResponse.status, 200);
     assert.equal(vectorOnlyResponse.status, 200);
     assert.equal(customSizeResponse.status, 200);
     assert.equal(largeSizeResponse.status, 200);
@@ -251,7 +249,7 @@ void test("field endpoint returns generated SVG", async () => {
     assert.equal(countSvgTag(denseGridSvg, "rect"), 96 * 72 + 1);
     assert.equal(countSvgTag(coarseGridSvg, "rect"), 48 * 36 + 1);
     assert.notEqual(lowForceSvg, highForceSvg);
-    assert.notEqual(wideSwirlSvg, tightSwirlSvg);
+    assert.notEqual(tightTurnSvg, wideTurnSvg);
     assert.equal(countSvgTag(vectorOnlySvg, "line") > 0, true);
     assert.equal(countSvgTag(vectorOnlySvg, "rect"), 1);
     assert.match(vectorOnlySvg, /Scale \(SVG units\)/);
@@ -262,6 +260,7 @@ void test("field endpoint returns generated SVG", async () => {
     assert.match(largeSizeSvg, /height="1900"/);
     assert.match(largeSizeSvg, /viewBox="0 0 2500 1900"/);
     assert.equal(String.fromCharCode(...binaryBytes.slice(0, 4)), "DFLD");
+    assert.equal(binaryBytes[4], 3);
     assert.equal(decodedBinary.metadata.parameters.randomSeed, "test-seed");
     assert.equal(decodedBinary.metadata.renderWidth, 640);
     assert.equal(decodedBinary.metadata.renderHeight, 480);
@@ -348,16 +347,14 @@ void test("field endpoints reject invalid parameters with bad request", async ()
 void test("zero-magnitude vectors do not render fallback arrows", () => {
   const zeroField: VectorField = {
     grid: { width: 2, height: 2 },
-    amplitude: new Float32Array(4),
     direction: new Float32Array(4),
     displacementX: new Float32Array(4),
     displacementY: new Float32Array(4),
     magnitude: new Float32Array(4),
     maximumDisplacementMagnitude: 80,
-    swirls: [],
   };
 
-  const svg = renderFieldSvg(zeroField, {
+  const svg = renderFieldSvg(createPreviewRenderField(zeroField), {
     width: 100,
     height: 80,
     showHeatmap: false,
@@ -370,16 +367,14 @@ void test("zero-magnitude vectors do not render fallback arrows", () => {
 void test("rendered arrows use actual displacement geometry", () => {
   const field: VectorField = {
     grid: { width: 1, height: 1 },
-    amplitude: new Float32Array([0]),
     direction: new Float32Array([0]),
     displacementX: new Float32Array([10]),
     displacementY: new Float32Array([-16]),
     magnitude: new Float32Array([Math.hypot(10, 16)]),
     maximumDisplacementMagnitude: 32,
-    swirls: [],
   };
 
-  const svg = renderFieldSvg(field, {
+  const svg = renderFieldSvg(createPreviewRenderField(field), {
     width: 100,
     height: 80,
     showHeatmap: false,
@@ -389,19 +384,17 @@ void test("rendered arrows use actual displacement geometry", () => {
   assert.match(svg, /x1="0" y1="0" x2="10" y2="-16"/);
 });
 
-void test("rendered heatmap uses the final displacement budget as its scale", () => {
+void test("rendered heatmap uses the source scalar field", () => {
   const field: VectorField = {
     grid: { width: 1, height: 1 },
-    amplitude: new Float32Array([0]),
     direction: new Float32Array([0]),
     displacementX: new Float32Array([12]),
     displacementY: new Float32Array([16]),
     magnitude: new Float32Array([20]),
     maximumDisplacementMagnitude: 80,
-    swirls: [],
   };
 
-  const svg = renderFieldSvg(field, {
+  const svg = renderFieldSvg(createPreviewRenderField(field, [0.25]), {
     width: 100,
     height: 80,
     showHeatmap: true,
@@ -409,89 +402,93 @@ void test("rendered heatmap uses the final displacement budget as its scale", ()
   });
 
   assert.match(svg, /fill="rgb\(14 77 83\)"/);
+  assert.match(svg, /preserveAspectRatio="xMidYMid meet"/);
 });
 
-void test("rendered fixtures stay faithful to final displacement for noise, swirl, and mixed fields", () => {
+void test("rendered heatmap spans the full height for tall previews", () => {
+  const field: VectorField = {
+    grid: { width: 1, height: 3 },
+    direction: new Float32Array(3),
+    displacementX: new Float32Array(3),
+    displacementY: new Float32Array(3),
+    magnitude: new Float32Array(3),
+    maximumDisplacementMagnitude: 0,
+  };
+
+  const svg = renderFieldSvg(createPreviewRenderField(field, [0, 0.5, 1]), {
+    width: 40,
+    height: 120,
+    showHeatmap: true,
+    vectorOverlayDensity: 16,
+  });
+
+  assert.match(svg, /<rect x="0" y="0" width="40" height="30" fill=/);
+  assert.match(svg, /<rect x="0" y="30" width="40" height="60" fill=/);
+  assert.match(svg, /<rect x="0" y="90" width="40" height="30" fill=/);
+});
+
+void test("rendered fixtures stay faithful to final displacement vectors", () => {
   const fixtures: {
     name: string;
     field: VectorField;
+    scalarValues: number[];
     expectedLine: RegExp;
     expectedHeatmapFill: string;
-    expectedCircleCount: number;
   }[] = [
     {
-      name: "pure noise",
+      name: "short trace",
       field: {
         grid: { width: 1, height: 1 },
-        amplitude: new Float32Array([0.5]),
         direction: new Float32Array([Math.atan2(4, 3)]),
         displacementX: new Float32Array([3]),
         displacementY: new Float32Array([4]),
         magnitude: new Float32Array([5]),
         maximumDisplacementMagnitude: 10,
-        swirls: [],
       },
+      scalarValues: [0.5],
       expectedLine: /x1="0" y1="0" x2="3" y2="4"/,
       expectedHeatmapFill: 'fill="rgb(125 152 102)"',
-      expectedCircleCount: 0,
     },
     {
-      name: "pure swirl",
+      name: "vertical trace",
       field: {
         grid: { width: 1, height: 1 },
-        amplitude: new Float32Array([0]),
         direction: new Float32Array([Math.PI / 2]),
         displacementX: new Float32Array([0]),
         displacementY: new Float32Array([8]),
         magnitude: new Float32Array([8]),
         maximumDisplacementMagnitude: 10,
-        swirls: [
-          {
-            positionX: 0.5,
-            positionY: 0.5,
-            radius: 0.25,
-            strengthDegrees: 180,
-            direction: 1,
-          },
-        ],
       },
+      scalarValues: [0.8],
       expectedLine: /x1="0" y1="0" x2="0" y2="8"/,
       expectedHeatmapFill: 'fill="rgb(247 175 71)"',
-      expectedCircleCount: 1,
     },
     {
-      name: "mixed field",
+      name: "mixed trace",
       field: {
         grid: { width: 1, height: 1 },
-        amplitude: new Float32Array([0.75]),
         direction: new Float32Array([Math.atan2(8, 6)]),
         displacementX: new Float32Array([6]),
         displacementY: new Float32Array([8]),
         magnitude: new Float32Array([10]),
         maximumDisplacementMagnitude: 10,
-        swirls: [
-          {
-            positionX: 0.5,
-            positionY: 0.5,
-            radius: 0.3,
-            strengthDegrees: 120,
-            direction: -1,
-          },
-        ],
       },
+      scalarValues: [1],
       expectedLine: /x1="0" y1="0" x2="6" y2="8"/,
       expectedHeatmapFill: 'fill="rgb(249 115 22)"',
-      expectedCircleCount: 1,
     },
   ];
 
   for (const fixture of fixtures) {
-    const svg = renderFieldSvg(fixture.field, {
+    const svg = renderFieldSvg(
+      createPreviewRenderField(fixture.field, fixture.scalarValues),
+      {
       width: 100,
       height: 80,
       showHeatmap: true,
       vectorOverlayDensity: 16,
-    });
+      },
+    );
 
     assert.match(svg, fixture.expectedLine, fixture.name);
     assert.match(
@@ -501,16 +498,30 @@ void test("rendered fixtures stay faithful to final displacement for noise, swir
       ),
       fixture.name,
     );
-    assert.equal(
-      countSvgTag(svg, "circle"),
-      fixture.expectedCircleCount,
-      fixture.name,
-    );
+    assert.equal(countSvgTag(svg, "circle"), 0, fixture.name);
   }
 });
 
 function countSvgTag(svg: string, tagName: string): number {
   return svg.match(new RegExp(`<${tagName}\\b`, "g"))?.length ?? 0;
+}
+
+function createPreviewRenderField(
+  vectorField: VectorField,
+  scalarValues?: number[],
+): {
+  scalarField: ScalarField;
+  vectorField: VectorField;
+} {
+  const sampleCount = vectorField.grid.width * vectorField.grid.height;
+
+  return {
+    scalarField: {
+      grid: vectorField.grid,
+      values: new Float32Array(scalarValues ?? new Array(sampleCount).fill(0)),
+    },
+    vectorField,
+  };
 }
 
 async function postParameters(

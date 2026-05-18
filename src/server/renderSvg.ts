@@ -1,5 +1,10 @@
-import type { RenderOptions, VectorField } from "../shared/types.js";
+import type { RenderOptions, ScalarField, VectorField } from "../shared/types.js";
 import { indexAt, normalizedCoordinate } from "../field/grid.js";
+
+export interface PreviewRenderField {
+  scalarField: ScalarField;
+  vectorField: VectorField;
+}
 
 interface ColorStop {
   value: number;
@@ -16,23 +21,21 @@ const COLOR_STOPS: ColorStop[] = [
 ];
 
 export function renderFieldSvg(
-  field: VectorField,
+  field: PreviewRenderField,
   options: RenderOptions,
 ): string {
-  const maximumMagnitude = displayMagnitudeReference(field);
-  const cellWidth = options.width / field.grid.width;
-  const cellHeight = options.height / field.grid.height;
+  const xBounds = nodeBounds(options.width, field.scalarField.grid.width);
+  const yBounds = nodeBounds(options.height, field.scalarField.grid.height);
   const heatmap = options.showHeatmap
-    ? renderHeatmap(field, cellWidth, cellHeight, maximumMagnitude)
+    ? renderHeatmap(field.scalarField, xBounds, yBounds)
     : "";
-  const arrows = renderArrows(field, options);
-  const swirls = renderSwirlCenters(field, options);
+  const arrows = renderArrows(field.vectorField, options);
   const scaleBar = renderScaleBar(options);
   const heatmapLayer = options.showHeatmap
     ? `<g shape-rendering="crispEdges">${heatmap}</g>`
     : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(options.width)}" height="${formatNumber(options.height)}" viewBox="0 0 ${formatNumber(options.width)} ${formatNumber(options.height)}" role="img" aria-label="Generated displacement field">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(options.width)}" height="${formatNumber(options.height)}" viewBox="0 0 ${formatNumber(options.width)} ${formatNumber(options.height)}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Generated displacement field">
 <defs>
 <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
 <path d="M 0 0 L 10 5 L 0 10 z" fill="#f8fafc" opacity="0.82" />
@@ -41,16 +44,14 @@ export function renderFieldSvg(
 <rect width="100%" height="100%" fill="#020617" />
 ${heatmapLayer}
 <g stroke="#f8fafc" stroke-width="1" stroke-linecap="round" marker-end="url(#arrowhead)" opacity="0.84">${arrows}</g>
-<g fill="none" stroke="#e2e8f0" stroke-width="1" opacity="0.45">${swirls}</g>
 ${scaleBar}
 </svg>`;
 }
 
 function renderHeatmap(
-  field: VectorField,
-  cellWidth: number,
-  cellHeight: number,
-  maximumMagnitude: number,
+  field: ScalarField,
+  xBounds: number[],
+  yBounds: number[],
 ): string {
   const fragments: string[] = [];
   for (let rowIndex = 0; rowIndex < field.grid.height; rowIndex += 1) {
@@ -60,13 +61,13 @@ function renderHeatmap(
       columnIndex += 1
     ) {
       const scalarIndex = indexAt(columnIndex, rowIndex, field.grid);
-      const color = colorAt(
-        displayMagnitudeRatio(field.magnitude[scalarIndex], maximumMagnitude),
-      );
-      const positionX = columnIndex * cellWidth;
-      const positionY = rowIndex * cellHeight;
+      const color = colorAt(field.values[scalarIndex]);
+      const positionX = xBounds[columnIndex];
+      const positionY = yBounds[rowIndex];
+      const cellWidth = xBounds[columnIndex + 1] - positionX;
+      const cellHeight = yBounds[rowIndex + 1] - positionY;
       fragments.push(
-        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(cellWidth + 0.4)}" height="${formatNumber(cellHeight + 0.4)}" fill="${color}" />`,
+        `<rect x="${formatNumber(positionX)}" y="${formatNumber(positionY)}" width="${formatNumber(cellWidth)}" height="${formatNumber(cellHeight)}" fill="${color}" />`,
       );
     }
   }
@@ -106,20 +107,6 @@ function densityToArrowStep(
 ): number {
   const shortestSide = Math.min(field.grid.width, field.grid.height);
   return Math.max(1, Math.round(shortestSide / vectorOverlayDensity));
-}
-
-function renderSwirlCenters(
-  field: VectorField,
-  options: RenderOptions,
-): string {
-  return field.swirls
-    .map((swirl) => {
-      const centerX = swirl.positionX * options.width;
-      const centerY = swirl.positionY * options.height;
-      const radius = swirl.radius * Math.min(options.width, options.height);
-      return `<circle cx="${formatNumber(centerX)}" cy="${formatNumber(centerY)}" r="${formatNumber(radius)}" />`;
-    })
-    .join("");
 }
 
 function renderScaleBar(options: RenderOptions): string {
@@ -173,22 +160,22 @@ function colorAt(value: number): string {
   return `rgb(${String(red)} ${String(green)} ${String(blue)})`;
 }
 
-function displayMagnitudeRatio(
-  magnitude: number,
-  maximumMagnitude: number,
-): number {
-  return Math.min(1, Math.max(0, magnitude / maximumMagnitude));
-}
-
-function displayMagnitudeReference(field: VectorField): number {
-  if (
-    Number.isFinite(field.maximumDisplacementMagnitude) &&
-    field.maximumDisplacementMagnitude > Number.EPSILON
-  ) {
-    return field.maximumDisplacementMagnitude;
+function nodeBounds(size: number, nodeCount: number): number[] {
+  if (nodeCount <= 1) {
+    return [0, size];
   }
 
-  return 1;
+  const bounds = new Array<number>(nodeCount + 1);
+  bounds[0] = 0;
+  bounds[nodeCount] = size;
+
+  for (let nodeIndex = 1; nodeIndex < nodeCount; nodeIndex += 1) {
+    const previousCenter = normalizedCoordinate(nodeIndex - 1, nodeCount) * size;
+    const currentCenter = normalizedCoordinate(nodeIndex, nodeCount) * size;
+    bounds[nodeIndex] = (previousCenter + currentCenter) * 0.5;
+  }
+
+  return bounds;
 }
 
 function formatNumber(value: number): string {

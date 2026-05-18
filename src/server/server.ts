@@ -10,7 +10,11 @@ import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { generateDisplacementField } from "../field/composeField.js";
+import {
+  generateDisplacementField,
+  generateFieldArtifacts,
+} from "../field/composeField.js";
+import { createGridFromSparseness } from "../field/grid.js";
 import { encodeGeneratedDisplacementField } from "./exportBinary.js";
 import {
   ParameterValidationError,
@@ -134,7 +138,12 @@ async function serveFieldSvg(
     const parameters = parseParameters(await readJsonBody(request));
     const width = parameters.renderWidth;
     const height = parameters.renderHeight;
-    const field = generateDisplacementField(parameters);
+    const grid = createGridFromSparseness(
+      width,
+      height,
+      parameters.gridSparseness,
+    );
+    const field = generateFieldArtifacts(parameters, grid);
     const svg = renderFieldSvg(field, {
       width,
       height,

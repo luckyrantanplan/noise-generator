@@ -4,7 +4,7 @@ import type {
 } from "./types.js";
 
 export const DISPLACEMENT_BINARY_MAGIC = "DFLD";
-export const DISPLACEMENT_BINARY_VERSION = 2;
+export const DISPLACEMENT_BINARY_VERSION = 3;
 
 const MAGIC_LENGTH = 4;
 const VERSION_LENGTH = 1;

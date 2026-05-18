@@ -454,20 +454,14 @@ function parameterValuesEqual(
   return (
     left.renderWidth === right.renderWidth &&
     left.renderHeight === right.renderHeight &&
-    left.force === right.force &&
+    left.maxTraceLength === right.maxTraceLength &&
+    left.targetTurnAngleDegrees === right.targetTurnAngleDegrees &&
     left.scale === right.scale &&
     left.silenceCutoffPercent === right.silenceCutoffPercent &&
     left.gridSparseness === right.gridSparseness &&
     left.showHeatmap === right.showHeatmap &&
     left.vectorOverlayDensity === right.vectorOverlayDensity &&
     left.spectralSlopeDbPerOct === right.spectralSlopeDbPerOct &&
-    left.amplitudeContrast === right.amplitudeContrast &&
-    left.swirlDensity === right.swirlDensity &&
-    left.swirlMinimumAngleDegrees === right.swirlMinimumAngleDegrees &&
-    left.swirlStrengthPercent === right.swirlStrengthPercent &&
-    left.swirlFalloff === right.swirlFalloff &&
-    left.swirlDirectionBias === right.swirlDirectionBias &&
-    left.directionNoiseMix === right.directionNoiseMix &&
     left.randomSeed === right.randomSeed
   );
 }

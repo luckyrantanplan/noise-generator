@@ -1,3 +1,12 @@
+## Historical Note
+
+This document describes an obsolete planning path for the removed swirl-based generator.
+
+The active implementation no longer uses force-limited swirls.
+It now uses a scalar-field isoline tracer with `maxTraceLength` and `targetTurnAngleDegrees`.
+
+See /home/florian/copilotTest/noise_generator/docs/specification.md for the current algorithm.
+
 ## Plan: Force-Limited Swirl Field
 
 Redefine `force` as the maximum permitted displacement magnitude in SVG/world units without using a final post-composition clamp. The recommended implementation is: 1) switch swirl placement to non-overlapping radius-aware packing so multiple swirls cannot stack at one point, 2) compute an exact worst-case swirl chord bound from the current envelope and clamp the effective swirl strength against `force`, 3) treat `force` as a shared vector budget that is jointly allocated between swirl and noise with a mild swirl preference instead of a pure residual-budget rule, and 4) bump the binary version so older exports are intentionally rejected instead of being silently reinterpreted.

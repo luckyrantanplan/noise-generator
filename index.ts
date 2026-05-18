@@ -1,4 +1,8 @@
-import { generateDisplacementField } from "./src/field/composeField.js";
+import {
+  generateDisplacementField,
+  generateFieldArtifacts,
+} from "./src/field/composeField.js";
+import { createGridFromSparseness } from "./src/field/grid.js";
 import { DEFAULT_PARAMETERS } from "./src/shared/params.js";
 import {
   PARAMETER_DEFINITIONS,
@@ -45,7 +49,12 @@ export function generateDisplacementPreview(
     ...DEFAULT_PARAMETERS,
     ...parameters,
   });
-  const field = generateDisplacementField(normalizedParameters);
+  const grid = createGridFromSparseness(
+    normalizedParameters.renderWidth,
+    normalizedParameters.renderHeight,
+    normalizedParameters.gridSparseness,
+  );
+  const field = generateFieldArtifacts(normalizedParameters, grid);
 
   return {
     parameters: normalizedParameters,

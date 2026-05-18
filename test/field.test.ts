@@ -1,23 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { shapeAmplitudeField } from "../src/field/amplitude.js";
-import {
-  DEFAULT_GRID,
-  createGridFromSparseness,
-  indexAt,
-  shortSideMetricScales,
-} from "../src/field/grid.js";
-import {
-  densityToPoissonRadius,
-  sampleSwirlCenters,
-} from "../src/field/poissonDisk.js";
+import { DEFAULT_GRID, createGridFromSparseness } from "../src/field/grid.js";
 import { SeededRandom } from "../src/field/hashSeed.js";
+import { traceIsolineFromPoint } from "../src/field/isolineTracing.js";
+import { estimateGradient, sampleScalar } from "../src/field/scalarSampling.js";
 import {
   generateDisplacementField,
   generateVectorField,
 } from "../src/field/composeField.js";
-import { evaluateSwirlInfluence } from "../src/field/swirls.js";
 import {
   frequencyRadiusInLongestSideUnits,
   generateWhiteNoise,
@@ -34,12 +25,7 @@ import {
   parseParameters,
   validateParameters,
 } from "../src/server/parameterValidation.js";
-import {
-  maxSwirlRadiusInWorldUnits,
-  minSwirlRadiusInWorldUnits,
-  resolveSwirlStrengthDegrees,
-} from "../src/shared/swirlBudget.js";
-import type { ScalarField } from "../src/shared/types.js";
+import type { ParameterValues, ScalarField } from "../src/shared/types.js";
 
 void test("seeded random values are reproducible", () => {
   const firstRandom = new SeededRandom("same-seed");
@@ -59,464 +45,156 @@ void test("seeded random values are reproducible", () => {
   assert.deepEqual(firstSequence, secondSequence);
 });
 
-void test("amplitude shaping remaps values into the configured range", () => {
+void test("scalar sampling uses bilinear interpolation", () => {
   const field: ScalarField = {
     grid: { width: 2, height: 2 },
-    values: new Float32Array([0, 0.25, 0.5, 1]),
-  };
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    amplitudeContrast: 1,
+    values: new Float32Array([0, 1, 0, 1]),
   };
 
-  const shapedValues = shapeAmplitudeField(field, parameters);
-
-  assert.ok(Math.abs(shapedValues[0] - 0) < 1e-6);
-  assert.ok(Math.abs(shapedValues[3] - 1) < 1e-6);
-  assert.ok(shapedValues[1] > shapedValues[0]);
-  assert.ok(shapedValues[2] < shapedValues[3]);
+  assert.ok(Math.abs(sampleScalar(field, 0.5, 0.5) - 0.5) < 1e-6);
 });
 
-void test("poisson radius decreases as requested swirl density increases", () => {
-  const sparseRadius = densityToPoissonRadius(8);
-  const denseRadius = densityToPoissonRadius(40);
-
-  assert.ok(denseRadius < sparseRadius);
-});
-
-void test("poisson sampler returns force-derived radii across a range", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    renderWidth: 960,
-    renderHeight: 720,
-    force: 80,
-    swirlDensity: 24,
-    swirlMinimumAngleDegrees: 180,
-    swirlStrengthPercent: 60,
-  };
-  const centers = sampleSwirlCenters(
-    {
-      grid: { width: 96, height: 48 },
-      density: parameters.swirlDensity,
-      force: parameters.force,
-      renderWidth: parameters.renderWidth,
-      renderHeight: parameters.renderHeight,
-      minimumAngleDegrees: parameters.swirlMinimumAngleDegrees,
-      strengthPercent: parameters.swirlStrengthPercent,
-      swirlFalloff: parameters.swirlFalloff,
-      directionBias: parameters.swirlDirectionBias,
-    },
-    new SeededRandom("spacing"),
+void test("gradient estimation follows a linear scalar field", () => {
+  const field = createLinearScalarField(
+    (pointX, pointY) => pointX + pointY * 2,
   );
-  const shortSide = Math.min(parameters.renderWidth, parameters.renderHeight);
-  const minimumRadius = minSwirlRadiusInWorldUnits(parameters) / shortSide;
-  const maximumRadius = maxSwirlRadiusInWorldUnits(parameters) / shortSide;
+  const gradient = estimateGradient(field, 0.5, 0.5);
 
-  assert.ok(centers.length > 0);
-  assert.ok(centers.every((center) => center.radius >= minimumRadius - 1e-7));
-  assert.ok(centers.every((center) => center.radius <= maximumRadius + 1e-7));
-  assert.ok(centers.some((center) => center.radius > minimumRadius + 1e-3));
+  assert.ok(Math.abs(gradient.x - 1) < 0.15);
+  assert.ok(Math.abs(gradient.y - 2) < 0.15);
 });
 
-void test("sampled swirl supports do not overlap", () => {
-  const grid = { width: 96, height: 48 };
-  const metricScales = shortSideMetricScales(grid);
-  const centers = sampleSwirlCenters(
+void test("tracing follows the high-value-left convention and truncates at maxTraceLength", () => {
+  const field = createLinearScalarField((_, pointY) => pointY);
+  const trace = traceIsolineFromPoint(
+    field,
+    { x: 2, y: 2 },
     {
-      grid,
-      density: 48,
-      force: DEFAULT_PARAMETERS.force,
-      renderWidth: DEFAULT_PARAMETERS.renderWidth,
-      renderHeight: DEFAULT_PARAMETERS.renderHeight,
-      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
-      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
-      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
-      directionBias: 0.5,
+      renderWidth: 4,
+      renderHeight: 4,
+      targetTurnAngleDegrees: 720,
+      maxTraceLength: 1.5,
     },
-    new SeededRandom("non-overlap"),
   );
 
-  for (let firstIndex = 0; firstIndex < centers.length; firstIndex += 1) {
-    for (
-      let secondIndex = firstIndex + 1;
-      secondIndex < centers.length;
-      secondIndex += 1
-    ) {
-      const firstCenter = centers[firstIndex];
-      const secondCenter = centers[secondIndex];
-      const distance = Math.hypot(
-        (firstCenter.positionX - secondCenter.positionX) * metricScales.xScale,
-        (firstCenter.positionY - secondCenter.positionY) * metricScales.yScale,
+  assert.equal(trace.terminationReason, "length-limit");
+  assert.ok(Math.abs(measurePathLength(trace.path) - 1.5) < 1e-4);
+  const endPoint = trace.path[trace.path.length - 1];
+  assert.ok(Math.abs(endPoint.x - 0.5) < 1e-4);
+  assert.ok(Math.abs(endPoint.y - 2) < 1e-4);
+});
+
+void test("within-cell cubic marching is closer to a curved contour than the legacy chord step", () => {
+  const renderWidth = 4;
+  const renderHeight = 4;
+  const contourBaseY = 2.2;
+  const contourOriginX = 2;
+  const contourCurvature = 0.25;
+  const field = createWorldScalarField({
+    gridWidth: 5,
+    gridHeight: 5,
+    renderWidth,
+    renderHeight,
+    sampler: (pointX, pointY) => {
+      return (
+        pointY -
+        (contourBaseY + contourCurvature * (pointX - contourOriginX) ** 2)
       );
-
-      assert.ok(distance + 1e-7 >= firstCenter.radius + secondCenter.radius);
-    }
-  }
-});
-
-void test("swirl direction bias controls clockwise versus counterclockwise ratio", () => {
-  const lowBiasCenters = sampleSwirlCenters(
-    {
-      grid: DEFAULT_GRID,
-      density: 48,
-      force: DEFAULT_PARAMETERS.force,
-      renderWidth: DEFAULT_PARAMETERS.renderWidth,
-      renderHeight: DEFAULT_PARAMETERS.renderHeight,
-      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
-      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
-      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
-      directionBias: 0,
     },
-    new SeededRandom("bias-low"),
-  );
-  const balancedCenters = sampleSwirlCenters(
-    {
-      grid: DEFAULT_GRID,
-      density: 48,
-      force: DEFAULT_PARAMETERS.force,
-      renderWidth: DEFAULT_PARAMETERS.renderWidth,
-      renderHeight: DEFAULT_PARAMETERS.renderHeight,
-      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
-      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
-      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
-      directionBias: 0.5,
-    },
-    new SeededRandom("bias-mid"),
-  );
-  const highBiasCenters = sampleSwirlCenters(
-    {
-      grid: DEFAULT_GRID,
-      density: 48,
-      force: DEFAULT_PARAMETERS.force,
-      renderWidth: DEFAULT_PARAMETERS.renderWidth,
-      renderHeight: DEFAULT_PARAMETERS.renderHeight,
-      minimumAngleDegrees: DEFAULT_PARAMETERS.swirlMinimumAngleDegrees,
-      strengthPercent: DEFAULT_PARAMETERS.swirlStrengthPercent,
-      swirlFalloff: DEFAULT_PARAMETERS.swirlFalloff,
-      directionBias: 1,
-    },
-    new SeededRandom("bias-high"),
-  );
-
-  assert.ok(lowBiasCenters.every((center) => center.direction === -1));
-  assert.ok(highBiasCenters.every((center) => center.direction === 1));
-  assert.ok(balancedCenters.some((center) => center.direction === -1));
-  assert.ok(balancedCenters.some((center) => center.direction === 1));
-});
-
-void test("spectral radius stays isotropic on rectangular grids", () => {
-  const grid = { width: 96, height: 48 };
-  const horizontalRadius = frequencyRadiusInLongestSideUnits(2, 0, grid);
-  const verticalRadius = frequencyRadiusInLongestSideUnits(0, 1, grid);
-
-  assert.ok(Math.abs(horizontalRadius - verticalRadius) < 1e-9);
-});
-
-void test("swirl influence follows chord geometry for a local rotation", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    swirlStrengthPercent: 90,
-    swirlFalloff: 1,
+  });
+  const startPoint = {
+    x: contourOriginX,
+    y: contourBaseY,
   };
-  const field = evaluateSwirlInfluence(
-    { width: 5, height: 5 },
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.5,
-        strengthDegrees: 90,
-        direction: 1,
-      },
-    ],
-    parameters,
+  const trace = traceIsolineFromPoint(field, startPoint, {
+    renderWidth,
+    renderHeight,
+    targetTurnAngleDegrees: 180,
+    maxTraceLength: 10,
+    maxSteps: 1,
+  });
+  const refinedLength = measurePathLength(trace.path);
+  const endPoint = trace.path[trace.path.length - 1];
+  const legacyChordLength = Math.hypot(
+    endPoint.x - startPoint.x,
+    endPoint.y - startPoint.y,
   );
+  const expectedArcLength = measureParabolaArcLength(
+    contourCurvature,
+    contourOriginX,
+    startPoint.x,
+    endPoint.x,
+  );
+  const refinedError = Math.abs(refinedLength - expectedArcLength);
+  const chordError = Math.abs(legacyChordLength - expectedArcLength);
 
-  const pointColumn = 3;
-  const pointRow = 2;
-  const pointIndex = pointRow * 5 + pointColumn;
-  assert.ok(Math.abs(field.vectorX[pointIndex] + 0.25) < 1e-6);
-  assert.ok(Math.abs(field.vectorY[pointIndex] - 0.25) < 1e-6);
+  assert.ok(trace.path.length > 2);
+  assert.ok(Math.abs(endPoint.x - 1) < 1e-3);
+  assert.ok(Math.abs(endPoint.y - 2.45) < 5e-3);
+  assert.ok(refinedError < chordError * 0.2);
 });
 
-void test("swirl displacement is suppressed only in tiny center and edge dead zones", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    swirlStrengthPercent: 180,
-    swirlFalloff: 2,
-  };
-  const grid = { width: 201, height: 201 };
-  const field = evaluateSwirlInfluence(
-    grid,
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.4,
-        strengthDegrees: 180,
-        direction: 1,
-      },
-    ],
-    parameters,
-  );
-
-  const centerDeadZoneIndex = indexAt(101, 100, grid);
-  const interiorIndex = indexAt(112, 100, grid);
-  const edgeInteriorIndex = indexAt(172, 100, grid);
-  const edgeDeadZoneIndex = indexAt(179, 100, grid);
-  const centerDeadZoneMagnitude = Math.hypot(
-    field.vectorX[centerDeadZoneIndex],
-    field.vectorY[centerDeadZoneIndex],
-  );
-  const interiorMagnitude = Math.hypot(
-    field.vectorX[interiorIndex],
-    field.vectorY[interiorIndex],
-  );
-  const edgeInteriorMagnitude = Math.hypot(
-    field.vectorX[edgeInteriorIndex],
-    field.vectorY[edgeInteriorIndex],
-  );
-  const edgeDeadZoneMagnitude = Math.hypot(
-    field.vectorX[edgeDeadZoneIndex],
-    field.vectorY[edgeDeadZoneIndex],
-  );
-
-  assert.ok(interiorMagnitude > centerDeadZoneMagnitude * 20);
-  assert.ok(edgeInteriorMagnitude > edgeDeadZoneMagnitude * 20);
-});
-
-void test("swirl noise gain fades from the center to the boundary", () => {
-  const field = evaluateSwirlInfluence(
-    { width: 101, height: 101 },
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.4,
-        strengthDegrees: 180,
-        direction: 1,
-      },
-    ],
-    DEFAULT_PARAMETERS,
-  );
-
-  const grid = { width: 101, height: 101 };
-  const nearCenterIndex = indexAt(51, 50, grid);
-  const midRadiusIndex = indexAt(70, 50, grid);
-  const nearEdgeIndex = indexAt(89, 50, grid);
-  const nearCenterMagnitude = Math.hypot(field.noiseGain[nearCenterIndex], 0);
-  const midRadiusMagnitude = Math.hypot(field.noiseGain[midRadiusIndex], 0);
-  const nearEdgeMagnitude = Math.hypot(field.noiseGain[nearEdgeIndex], 0);
-
-  assert.ok(nearCenterMagnitude < 0.02);
-  assert.ok(midRadiusMagnitude > nearCenterMagnitude);
-  assert.ok(nearEdgeMagnitude > 0.95);
-});
-
-void test("swirl displacement is periodic for full turns", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    swirlStrengthPercent: 360,
-    swirlFalloff: 1,
-  };
-  const field = evaluateSwirlInfluence(
-    { width: 5, height: 5 },
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.5,
-        strengthDegrees: 360,
-        direction: 1,
-      },
-    ],
-    parameters,
-  );
-
-  const pointIndex = indexAt(3, 2, { width: 5, height: 5 });
-  assert.ok(
-    Math.hypot(field.vectorX[pointIndex], field.vectorY[pointIndex]) < 1e-6,
-  );
-});
-
-void test("swirl influence stays isotropic on rectangular grids", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    swirlStrengthPercent: 90,
-    swirlFalloff: 1,
-  };
-  const grid = { width: 33, height: 17 };
-  const field = evaluateSwirlInfluence(
-    grid,
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.3,
-        strengthDegrees: 90,
-        direction: 1,
-      },
-    ],
-    parameters,
-  );
-
-  const horizontalIndex = indexAt(18, 8, grid);
-  const verticalIndex = indexAt(16, 10, grid);
-  const horizontalMagnitude = Math.hypot(
-    field.vectorX[horizontalIndex],
-    field.vectorY[horizontalIndex],
-  );
-  const verticalMagnitude = Math.hypot(
-    field.vectorX[verticalIndex],
-    field.vectorY[verticalIndex],
-  );
-
-  assert.ok(Math.abs(horizontalMagnitude - verticalMagnitude) < 0.01);
-});
-
-void test("swirl displacement stays isotropic on wide render sizes", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    renderWidth: 1600,
-    renderHeight: 400,
-    swirlStrengthPercent: 90,
-    swirlFalloff: 1,
-  };
-  const grid = { width: 33, height: 17 };
-  const field = evaluateSwirlInfluence(
-    grid,
-    [
-      {
-        positionX: 0.5,
-        positionY: 0.5,
-        radius: 0.3,
-        strengthDegrees: 90,
-        direction: 1,
-      },
-    ],
-    parameters,
-  );
-  const horizontalIndex = indexAt(18, 8, grid);
-  const verticalIndex = indexAt(16, 10, grid);
-  const horizontalMagnitude = Math.hypot(
-    field.vectorX[horizontalIndex] * parameters.renderWidth,
-    field.vectorY[horizontalIndex] * parameters.renderHeight,
-  );
-  const verticalMagnitude = Math.hypot(
-    field.vectorX[verticalIndex] * parameters.renderWidth,
-    field.vectorY[verticalIndex] * parameters.renderHeight,
-  );
-
-  assert.ok(
-    Math.abs(horizontalMagnitude - verticalMagnitude) /
-      Math.max(horizontalMagnitude, verticalMagnitude) <
-      0.04,
-  );
-});
-
-void test("force still scales the noise contribution outside swirl support", () => {
-  const lowForceField = generateDisplacementField({
+void test("maxTraceLength changes the generated field for a fixed seed", () => {
+  const shortTraceField = generateDisplacementField({
     ...DEFAULT_PARAMETERS,
     renderWidth: 9,
     renderHeight: 9,
     gridSparseness: 1,
-    force: 5,
-    swirlDensity: 0,
-    randomSeed: "noise-force",
+    maxTraceLength: 5,
+    randomSeed: "trace-length",
   });
-  const highForceField = generateDisplacementField({
+  const longTraceField = generateDisplacementField({
     ...DEFAULT_PARAMETERS,
     renderWidth: 9,
     renderHeight: 9,
     gridSparseness: 1,
-    force: 15,
-    swirlDensity: 0,
-    randomSeed: "noise-force",
+    maxTraceLength: 15,
+    randomSeed: "trace-length",
   });
 
-  let changedCount = 0;
-  for (let index = 0; index < lowForceField.displacementX.length; index += 1) {
-    const deltaX = Math.abs(
-      lowForceField.displacementX[index] - highForceField.displacementX[index],
-    );
-    const deltaY = Math.abs(
-      lowForceField.displacementY[index] - highForceField.displacementY[index],
-    );
-    if (deltaX > 1e-6 || deltaY > 1e-6) {
-      changedCount += 1;
-    }
-  }
-
-  assert.ok(changedCount > 0);
+  assert.ok(fieldsDiffer(shortTraceField, longTraceField));
 });
 
-void test("force-resolved swirl angle shrinks as radius grows", () => {
+void test("targetTurnAngleDegrees changes the generated field for a fixed seed", () => {
+  const tightTurnField = generateDisplacementField({
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 9,
+    renderHeight: 9,
+    gridSparseness: 1,
+    targetTurnAngleDegrees: 45,
+    randomSeed: "turn-angle",
+  });
+  const wideTurnField = generateDisplacementField({
+    ...DEFAULT_PARAMETERS,
+    renderWidth: 9,
+    renderHeight: 9,
+    gridSparseness: 1,
+    targetTurnAngleDegrees: 270,
+    randomSeed: "turn-angle",
+  });
+
+  assert.ok(fieldsDiffer(tightTurnField, wideTurnField));
+});
+
+void test("generated field magnitudes stay within maxTraceLength", () => {
   const parameters = {
     ...DEFAULT_PARAMETERS,
-    force: 40,
-    renderWidth: 960,
-    renderHeight: 720,
-    swirlMinimumAngleDegrees: 180,
-    swirlStrengthPercent: 100,
-    swirlFalloff: 1,
-  };
-  const largeRadiusAngle = resolveSwirlStrengthDegrees(parameters, 40);
-  const compactRadiusAngle = resolveSwirlStrengthDegrees(parameters, 20);
-
-  assert.ok(largeRadiusAngle > 0);
-  assert.ok(largeRadiusAngle < compactRadiusAngle);
-});
-
-void test("force-resolved swirl angle shrinks as direction noise mix grows", () => {
-  const baseParameters = {
-    ...DEFAULT_PARAMETERS,
-    force: 40,
-    renderWidth: 960,
-    renderHeight: 720,
-    swirlMinimumAngleDegrees: 180,
-    swirlStrengthPercent: 100,
-    swirlFalloff: 1,
-  };
-  const lowNoiseAngle = resolveSwirlStrengthDegrees(
-    {
-      ...baseParameters,
-      directionNoiseMix: 0,
-    },
-    20,
-  );
-  const highNoiseAngle = resolveSwirlStrengthDegrees(
-    {
-      ...baseParameters,
-      directionNoiseMix: 0.8,
-    },
-    20,
-  );
-
-  assert.ok(lowNoiseAngle > 0);
-  assert.ok(highNoiseAngle >= 0);
-  assert.ok(highNoiseAngle < lowNoiseAngle);
-});
-
-void test("generated field magnitudes stay within force", () => {
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
-    force: 40,
-    swirlDensity: 18,
-    swirlMinimumAngleDegrees: 180,
-    swirlStrengthPercent: 100,
-    swirlFalloff: 1.5,
-    directionNoiseMix: 1,
-    randomSeed: "force-cap-field",
+    maxTraceLength: 40,
+    targetTurnAngleDegrees: 180,
+    randomSeed: "trace-cap-field",
   };
   const generatedField = generateVectorField(parameters, {
     width: 33,
     height: 25,
   });
 
-  assert.equal(generatedField.maximumDisplacementMagnitude, parameters.force);
+  assert.equal(
+    generatedField.maximumDisplacementMagnitude,
+    parameters.maxTraceLength,
+  );
 
   for (const value of generatedField.magnitude) {
-    assert.ok(value <= parameters.force + 1e-5);
+    assert.ok(value <= parameters.maxTraceLength + 1e-5);
   }
 });
 
@@ -524,9 +202,8 @@ void test("generated field magnitudes match final displacement components", () =
   const generatedField = generateVectorField(
     {
       ...DEFAULT_PARAMETERS,
-      force: 55,
-      swirlDensity: 18,
-      directionNoiseMix: 0.35,
+      maxTraceLength: 55,
+      targetTurnAngleDegrees: 120,
       randomSeed: "final-displacement-fidelity",
     },
     {
@@ -563,11 +240,6 @@ void test("generateDisplacementField matches explicit grid generation", () => {
   const wrappedField = generateDisplacementField(parameters);
 
   assert.deepEqual(wrappedField.grid, explicitField.grid);
-  assert.deepEqual(wrappedField.swirls, explicitField.swirls);
-  assert.deepEqual(
-    Array.from(wrappedField.amplitude),
-    Array.from(explicitField.amplitude),
-  );
   assert.deepEqual(
     Array.from(wrappedField.direction),
     Array.from(explicitField.direction),
@@ -590,20 +262,14 @@ void test("parameter parsing preserves valid numeric values exactly", () => {
   const parameters = createParameterObject({
     renderWidth: 99999,
     renderHeight: 9,
-    force: 99999,
+    maxTraceLength: 99999,
+    targetTurnAngleDegrees: 810,
     scale: 999,
     silenceCutoffPercent: 123,
     gridSparseness: 2,
-    amplitudeContrast: 1.5,
     spectralSlopeDbPerOct: 999,
     showHeatmap: false,
     vectorOverlayDensity: 999,
-    swirlDensity: 123,
-    swirlMinimumAngleDegrees: 999,
-    swirlStrengthPercent: 99999,
-    swirlFalloff: 3.25,
-    swirlDirectionBias: 999,
-    directionNoiseMix: -4,
     randomSeed: "  tuned-seed  ",
   });
 
@@ -611,20 +277,14 @@ void test("parameter parsing preserves valid numeric values exactly", () => {
 
   assert.equal(parsedParameters.renderWidth, 99999);
   assert.equal(parsedParameters.renderHeight, 9);
-  assert.equal(parsedParameters.force, 99999);
+  assert.equal(parsedParameters.maxTraceLength, 99999);
+  assert.equal(parsedParameters.targetTurnAngleDegrees, 810);
   assert.equal(parsedParameters.scale, 999);
   assert.equal(parsedParameters.silenceCutoffPercent, 123);
   assert.equal(parsedParameters.gridSparseness, 2);
   assert.equal(parsedParameters.spectralSlopeDbPerOct, 999);
-  assert.equal(parsedParameters.amplitudeContrast, 1.5);
   assert.equal(parsedParameters.showHeatmap, false);
   assert.equal(parsedParameters.vectorOverlayDensity, 999);
-  assert.equal(parsedParameters.swirlDensity, 123);
-  assert.equal(parsedParameters.swirlMinimumAngleDegrees, 999);
-  assert.equal(parsedParameters.swirlStrengthPercent, 99999);
-  assert.equal(parsedParameters.swirlFalloff, 3.25);
-  assert.equal(parsedParameters.swirlDirectionBias, 999);
-  assert.equal(parsedParameters.directionNoiseMix, -4);
   assert.equal(parsedParameters.randomSeed, "  tuned-seed  ");
 });
 
@@ -646,8 +306,8 @@ void test("parameter parsing rejects non-computable numeric values", () => {
   }, /Invalid parameter gridSparseness: must be >= 1/);
 
   assert.throws(() => {
-    parseParameters(createParameterObject({ amplitudeContrast: -1 }));
-  }, /Invalid parameter amplitudeContrast: must be >= 0/);
+    parseParameters(createParameterObject({ targetTurnAngleDegrees: -1 }));
+  }, /Invalid parameter targetTurnAngleDegrees: must be >= 0/);
 
   assert.throws(() => {
     parseParameters(createParameterObject({ showHeatmap: "maybe" }));
@@ -661,6 +321,14 @@ void test("schema validation rejects null parameter values", () => {
       renderWidth: null,
     });
   }, /Invalid parameter renderWidth: must be integer/);
+});
+
+void test("spectral radius stays isotropic on rectangular grids", () => {
+  const grid = { width: 96, height: 48 };
+  const horizontalRadius = frequencyRadiusInLongestSideUnits(2, 0, grid);
+  const verticalRadius = frequencyRadiusInLongestSideUnits(0, 1, grid);
+
+  assert.ok(Math.abs(horizontalRadius - verticalRadius) < 1e-9);
 });
 
 void test("spectral filtering normalizes noise into unit range", () => {
@@ -758,6 +426,101 @@ void test("default grid is power-of-two sized for FFT processing", () => {
   assert.equal(DEFAULT_GRID.height, 64);
 });
 
+function createLinearScalarField(
+  sampler: (pointX: number, pointY: number) => number,
+): ScalarField {
+  const grid = { width: 5, height: 5 };
+  const values = new Float32Array(grid.width * grid.height);
+
+  for (let rowIndex = 0; rowIndex < grid.height; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < grid.width; columnIndex += 1) {
+      const index = rowIndex * grid.width + columnIndex;
+      const pointX = columnIndex / (grid.width - 1);
+      const pointY = rowIndex / (grid.height - 1);
+      values[index] = sampler(pointX, pointY);
+    }
+  }
+
+  return { grid, values };
+}
+
+function createWorldScalarField(options: {
+  gridWidth: number;
+  gridHeight: number;
+  renderWidth: number;
+  renderHeight: number;
+  sampler: (pointX: number, pointY: number) => number;
+}): ScalarField {
+  const values = new Float32Array(options.gridWidth * options.gridHeight);
+
+  for (let rowIndex = 0; rowIndex < options.gridHeight; rowIndex += 1) {
+    for (
+      let columnIndex = 0;
+      columnIndex < options.gridWidth;
+      columnIndex += 1
+    ) {
+      const index = rowIndex * options.gridWidth + columnIndex;
+      const pointX =
+        (columnIndex / (options.gridWidth - 1)) * options.renderWidth;
+      const pointY =
+        (rowIndex / (options.gridHeight - 1)) * options.renderHeight;
+      values[index] = options.sampler(pointX, pointY);
+    }
+  }
+
+  return {
+    grid: { width: options.gridWidth, height: options.gridHeight },
+    values,
+  };
+}
+
+function fieldsDiffer(
+  left: ReturnType<typeof generateDisplacementField>,
+  right: ReturnType<typeof generateDisplacementField>,
+): boolean {
+  for (let index = 0; index < left.displacementX.length; index += 1) {
+    if (
+      Math.abs(left.displacementX[index] - right.displacementX[index]) > 1e-6 ||
+      Math.abs(left.displacementY[index] - right.displacementY[index]) > 1e-6
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function measurePathLength(path: { x: number; y: number }[]): number {
+  let length = 0;
+
+  for (let index = 1; index < path.length; index += 1) {
+    length += Math.hypot(
+      path[index].x - path[index - 1].x,
+      path[index].y - path[index - 1].y,
+    );
+  }
+
+  return length;
+}
+
+function measureParabolaArcLength(
+  curvature: number,
+  originX: number,
+  startX: number,
+  endX: number,
+): number {
+  const antiderivative = (pointX: number): number => {
+    const scaledSlope = 2 * curvature * (pointX - originX);
+    return (
+      (scaledSlope * Math.sqrt(1 + scaledSlope * scaledSlope) +
+        Math.asinh(scaledSlope)) /
+      (4 * curvature)
+    );
+  };
+
+  return Math.abs(antiderivative(endX) - antiderivative(startX));
+}
+
 function measureFieldRoughness(field: ScalarField): number {
   let differenceTotal = 0;
   let comparisonCount = 0;
@@ -788,7 +551,7 @@ function measureFieldRoughness(field: ScalarField): number {
 }
 
 function createParameterObject(
-  overrides: Record<string, unknown>,
+  overrides: Partial<ParameterValues> | Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     ...DEFAULT_PARAMETERS,

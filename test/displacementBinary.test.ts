@@ -36,7 +36,7 @@ void test("displacement binary codec preserves row-major dx dy packing", () => {
   assert.deepEqual(Array.from(decoded.displacements), [1, 2, 3, 4]);
 });
 
-void test("displacement binary decoder rejects version 1 payloads", () => {
+void test("displacement binary decoder rejects version 2 payloads", () => {
   const metadata = createDisplacementMetadata({
     parameters: DEFAULT_PARAMETERS,
     grid: { width: 1, height: 1 },
@@ -49,10 +49,10 @@ void test("displacement binary decoder rejects version 1 payloads", () => {
   );
   const encoded = encodeDisplacementField(metadata, displacements);
 
-  encoded[4] = 1;
+  encoded[4] = 2;
 
   assert.throws(
     () => decodeDisplacementField(encoded),
-    /Unsupported binary displacement version: 1/,
+    /Unsupported binary displacement version: 2/,
   );
 });

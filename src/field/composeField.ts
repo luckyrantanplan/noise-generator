@@ -1,15 +1,24 @@
 import { DEFAULT_PARAMETERS } from "../shared/params.js";
 import type {
   GridSpec,
+  ScalarField,
   ParameterValues,
   VectorField,
 } from "../shared/types.js";
-import { shapeAmplitudeField } from "./amplitude.js";
-import { DEFAULT_GRID, createGrid, createGridFromSparseness } from "./grid.js";
-import { sampleSwirlCenters } from "./poissonDisk.js";
+import {
+  DEFAULT_GRID,
+  createGrid,
+  createGridFromSparseness,
+  normalizedCoordinate,
+} from "./grid.js";
 import { SeededRandom } from "./hashSeed.js";
+import { traceIsolineFromPoint, type TraceOptions } from "./isolineTracing.js";
 import { generateWhiteNoise, applySpectralFilter } from "./spectralNoise.js";
-import { evaluateSwirlInfluence } from "./swirls.js";
+
+export interface FieldArtifacts {
+  scalarField: ScalarField;
+  vectorField: VectorField;
+}
 
 export function generateDisplacementField(
   parameters: ParameterValues,
@@ -23,88 +32,98 @@ export function generateDisplacementField(
   return generateVectorField(parameters, grid);
 }
 
+export function generateFieldArtifacts(
+  parameters: ParameterValues,
+  suppliedGrid: GridSpec,
+): FieldArtifacts {
+  const grid = createGrid(suppliedGrid.width, suppliedGrid.height);
+  const scalarField = generateScalarField(parameters, grid);
+  const vectorField = generateVectorFieldFromScalarField(
+    parameters,
+    grid,
+    scalarField,
+  );
+
+  return {
+    scalarField,
+    vectorField,
+  };
+}
+
 export function generateVectorField(
   parameters: ParameterValues,
   suppliedGrid: GridSpec,
 ): VectorField {
-  const grid = createGrid(suppliedGrid.width, suppliedGrid.height);
-  const magnitudeRandom = new SeededRandom(
-    `${parameters.randomSeed}:magnitude`,
-  );
-  const directionRandom = new SeededRandom(
-    `${parameters.randomSeed}:direction`,
-  );
-  const swirlRandom = new SeededRandom(`${parameters.randomSeed}:swirls`);
+  const { vectorField } = generateFieldArtifacts(parameters, suppliedGrid);
 
-  const magnitudeNoise = generateWhiteNoise(grid, magnitudeRandom);
-  const directionNoise = generateWhiteNoise(grid, directionRandom);
-  const filteredMagnitude = applySpectralFilter(magnitudeNoise, {
-    cutoffPercent: parameters.scale,
-    silenceCutoffPercent: parameters.silenceCutoffPercent,
-    spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
-  });
-  const filteredDirection = applySpectralFilter(directionNoise, {
-    cutoffPercent: parameters.scale,
-    silenceCutoffPercent: parameters.silenceCutoffPercent,
-    spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
-  });
+  return vectorField;
+}
 
-  const amplitude = shapeAmplitudeField(filteredMagnitude, parameters);
-  const swirls = sampleSwirlCenters(
-    {
-      grid,
-      density: parameters.swirlDensity,
-      force: parameters.force,
-      renderWidth: parameters.renderWidth,
-      renderHeight: parameters.renderHeight,
-      minimumAngleDegrees: parameters.swirlMinimumAngleDegrees,
-      strengthPercent: parameters.swirlStrengthPercent,
-      swirlFalloff: parameters.swirlFalloff,
-      directionBias: parameters.swirlDirectionBias,
-    },
-    swirlRandom,
-  );
-  const swirlInfluence = evaluateSwirlInfluence(grid, swirls, parameters);
-
+function generateVectorFieldFromScalarField(
+  parameters: ParameterValues,
+  grid: GridSpec,
+  scalarField: ScalarField,
+): VectorField {
   const direction = new Float32Array(grid.width * grid.height);
   const displacementX = new Float32Array(grid.width * grid.height);
   const displacementY = new Float32Array(grid.width * grid.height);
   const magnitude = new Float32Array(grid.width * grid.height);
+  const targetTurnAngleDegrees = parameters.targetTurnAngleDegrees;
+  const maxTraceLength = parameters.maxTraceLength;
+  const traceOptions: TraceOptions = {
+    renderWidth: parameters.renderWidth,
+    renderHeight: parameters.renderHeight,
+    targetTurnAngleDegrees,
+    maxTraceLength,
+  };
 
-  for (let index = 0; index < direction.length; index += 1) {
-    const noiseAngle = filteredDirection.values[index] * Math.PI * 2;
-    const noiseDisplacementX =
-      Math.cos(noiseAngle) * amplitude[index] * parameters.force;
-    const noiseDisplacementY =
-      Math.sin(noiseAngle) * amplitude[index] * parameters.force;
-    const swirlDisplacementX =
-      swirlInfluence.vectorX[index] * parameters.renderWidth;
-    const swirlDisplacementY =
-      swirlInfluence.vectorY[index] * parameters.renderHeight;
-    const noiseGain =
-      parameters.directionNoiseMix +
-      (1 - parameters.directionNoiseMix) * swirlInfluence.noiseGain[index];
-    const composedVector = {
-      x: swirlDisplacementX + noiseDisplacementX * noiseGain,
-      y: swirlDisplacementY + noiseDisplacementY * noiseGain,
-    };
+  for (let rowIndex = 0; rowIndex < grid.height; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < grid.width; columnIndex += 1) {
+      const scalarIndex = rowIndex * grid.width + columnIndex;
+      const startPoint = {
+        x:
+          normalizedCoordinate(columnIndex, grid.width) *
+          parameters.renderWidth,
+        y:
+          normalizedCoordinate(rowIndex, grid.height) * parameters.renderHeight,
+      };
+      const trace = traceIsolineFromPoint(
+        scalarField,
+        startPoint,
+        traceOptions,
+      );
+      const endPoint = trace.path[trace.path.length - 1] ?? startPoint;
+      const vectorX = endPoint.x - startPoint.x;
+      const vectorY = endPoint.y - startPoint.y;
 
-    direction[index] = Math.atan2(composedVector.y, composedVector.x);
-    displacementX[index] = composedVector.x;
-    displacementY[index] = composedVector.y;
-    magnitude[index] = Math.hypot(displacementX[index], displacementY[index]);
+      displacementX[scalarIndex] = vectorX;
+      displacementY[scalarIndex] = vectorY;
+      magnitude[scalarIndex] = Math.hypot(vectorX, vectorY);
+      direction[scalarIndex] = Math.atan2(vectorY, vectorX);
+    }
   }
 
   return {
     grid,
-    amplitude,
     direction,
     displacementX,
     displacementY,
     magnitude,
-    maximumDisplacementMagnitude: parameters.force,
-    swirls,
+    maximumDisplacementMagnitude: maxTraceLength,
   };
+}
+
+function generateScalarField(
+  parameters: ParameterValues,
+  grid: GridSpec,
+): ScalarField {
+  const scalarRandom = new SeededRandom(`${parameters.randomSeed}:scalar`);
+  const scalarNoise = generateWhiteNoise(grid, scalarRandom);
+  return applySpectralFilter(scalarNoise, {
+    cutoffPercent: parameters.scale,
+    silenceCutoffPercent: parameters.silenceCutoffPercent,
+    spectralSlopeDbPerOct: parameters.spectralSlopeDbPerOct,
+  });
 }
 
 export function generateDefaultVectorField(): VectorField {

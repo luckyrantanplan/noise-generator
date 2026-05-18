@@ -1,57 +1,57 @@
-Specification: 2D Displacement Field Generator for an Axis-Aligned Rectangle
+Specification: Isoline-Driven 2D Displacement Field Generator
 
-Implement a 2D continuous displacement field inside an axis-aligned rectangle. The goal is to generate an expressive warping field that can later be used to deform geometry, but the deformation of the polygon interior itself is out of scope here. This task covers only the generation, control, and visualization of the field.
+Implement a 2D displacement field inside an axis-aligned rectangle. The implementation is written in TypeScript, rendered in an HTML page with interactive controls, and supports binary export of the generated displacement grid.
 
-The implementation must be written in TypeScript and displayed in an HTML page with interactive controls. The spectral filtering must use FFT / inverse FFT, and the implementation may use webfft for frequency-domain processing.
+The current implementation no longer builds the field from separate magnitude and direction fields plus explicit swirls. It now generates one scalar field, extracts the isoline passing through each grid sample, and converts the traced isoline segment into a displacement vector.
 
-1. Field model
+## 1. Field Model
 
 The output is a vector field defined on a regular 2D grid over the rectangle.
-At each grid point (x,y), the field returns a displacement vector:
-
-D(x,y)=(dx(x,y),dy(x,y))
-
-The field should be built from two main components:
-
-a magnitude field that controls displacement intensity,
-a direction field that controls displacement orientation.
-
-A good target representation is:
+At each grid sample $p = (x, y)$, the generator stores one displacement vector:
 
 $$
-D(x,y)=S(x,y)+N(x,y)
+D(p) = (dx(p), dy(p))
 $$
 
-where:
-
-- $S(x,y)$ is the swirl displacement term,
-- $N(x,y)$ is the filtered noise displacement term,
-- `Force` is the maximum allowed displacement magnitude in world units.
-
-The final composed vector field must satisfy:
+The vector is defined by tracing the isoline that passes through $p$ and then taking the endpoint offset:
 
 $$
-|D(x,y)| \le Force
+D(p) = p_{final} - p
 $$
 
-everywhere without relying on a final post-composition clamp.
+where $p_{final}$ is the last traced point reached before one of the stop conditions fires.
 
-2. Noise synthesis pipeline
+The stored magnitude is:
 
-The base random source should be uniform white noise generated on the grid.
-For example, generate one or more independent scalar fields with values sampled from a uniform distribution.
+$$
+|D(p)| = \sqrt{dx(p)^2 + dy(p)^2}
+$$
 
-Then apply a spectral filter in the frequency domain:
+and the stored direction is:
 
-Generate uniform random noise in spatial domain.
-Compute its 2D FFT.
-Apply a spectral envelope / filter in frequency space.
-Compute the inverse FFT.
-Normalize and remap the result to the desired range.
+$$
+\theta(p) = \operatorname{atan2}(dy(p), dx(p))
+$$
 
-This approach should be used for both the magnitude field and the direction field.
+The public displacement cap is `maxTraceLength`. In the shipped implementation it acts as the maximum walked arc length along the isoline. Because the stored vector is the endpoint offset of that walk, the resulting vector magnitude also satisfies:
 
-The current implementation uses the same spectral envelope for both:
+$$
+|D(p)| \le \texttt{maxTraceLength}
+$$
+
+## 2. Scalar Source Field
+
+The isolines are derived from one FFT-filtered scalar field $S(x, y)$.
+
+The generator pipeline is:
+
+1. generate uniform white noise on the grid
+2. compute its 2D FFT
+3. apply a radial spectral envelope in frequency space
+4. compute the inverse FFT
+5. normalize the result into $[0, 1]$
+
+The current radial envelope is:
 
 $$
 E(r) =
@@ -65,357 +65,250 @@ $$
 with:
 
 $$
-r_c = \max\left(1, \frac{Scale}{100} \cdot L\right),
+r_c = \max\left(1, \frac{\texttt{scale}}{100} \cdot L\right),
 \qquad
-r_{silence} = \max\left(0, \frac{Fsilence}{100} \cdot L\right)
+r_{silence} = \max\left(0, \frac{\texttt{silenceCutoffPercent}}{100} \cdot L\right)
 $$
 
-where $L$ is the longest side of the simulation grid and $p$ is derived from `Spectral Slope`.
+where $L$ is the longest side of the simulation grid and $p$ is derived from `spectralSlopeDbPerOct`.
 
-After inverse FFT and normalization, the magnitude field is shaped by:
+This scalar field is the only procedural source used by the new tracer.
 
-$$
-A(x,y)=\operatorname{clamp}(M(x,y),0,1)^{AmplitudeContrast}
-$$
+## 3. Tracing Rule
 
-and the direction field is converted into an angle:
+For each grid sample $p_{start}$:
 
-$$
-\Theta(x,y)=2\pi \cdot T(x,y)
-$$
+1. sample the scalar level $c = S(p_{start})$
+2. estimate the local gradient $\nabla S$
+3. define the initial isoline tangent as a perpendicular to that gradient
+4. trace the contour $S(x, y) = c$
+5. stop when either the net turning angle reaches the configured target or the walked arc length reaches `maxTraceLength`
 
-so the raw noise vector is:
+The current stop controls are:
 
-$$
-N_0(x,y)=Force \cdot A(x,y) \cdot (\cos \Theta(x,y), \sin \Theta(x,y))
-$$
+- `targetTurnAngleDegrees`: angular stop threshold
+- `maxTraceLength`: length stop threshold
 
-3. Swirl structure
-
-The field must also support local rotational structures (“swirls” or vortices).
-These are generated by placing random swirl centers with a non-overlapping variable-radius packing process in aspect-correct metric space. Swirl Density controls the approximate number of centers. Force and the minimum swirl angle determine the admissible radius range, and the packing ensures that swirl supports do not overlap.
-
-Each swirl center contributes a rotational influence inside a local neighborhood defined by a radius and a falloff curve. The swirl contribution is a chord displacement, not a tangent field.
-
-For a swirl with center $c$, radius $R$, direction sign $\sigma \in \{-1,+1\}$, and resolved global angle $\theta_s$, define normalized radius:
+The turning rule uses net turning from the initial segment direction, not accumulated absolute curvature. If $\theta_0$ is the first segment angle and $\theta_k$ is the current unwrapped segment angle, then the angular stop condition is:
 
 $$
-u = \frac{|p-c|}{R}
-$$
-
-in aspect-correct short-side metric space.
-
-The radial angle envelope is:
-
-$$
-w(u)=s(u;0.02,0.06) \cdot (1-s(u;0.9,1))^{SwirlFalloff}
-$$
-
-where $s$ denotes `smoothstep`.
-
-The local rotation angle is:
-
-$$
-\phi(u)=\sigma \cdot \theta_s \cdot \frac{\pi}{180} \cdot w(u)
-$$
-
-and the swirl displacement is:
-
-$$
-S(x,y)=R_{\phi(u)}(p-c)-(p-c)
-$$
-
-This gives a small center dead zone, a strong intermediate band, and a smooth fade to zero at the outer edge.
-
-Noise is attenuated inside swirl support by:
-
-$$
-g(u)=DirectionNoiseMix + (1-DirectionNoiseMix) \cdot s(u;0,1)
-$$
-
-so the surviving noise term becomes:
-
-$$
-N(x,y)=g(u) \cdot N_0(x,y)
-$$
-
-### Current Budget Algorithm: Detailed Behavior
-
-The shipped implementation resolves one global swirl angle per sampled circle. That angle is not chosen from the realized local noise field. Instead, it is chosen from a worst-case bound that assumes the surviving noise term could consume its full remaining allowance at each normalized radius.
-
-For a candidate global angle $\theta$, the current solver enforces:
-
-$$
-\max_{u \in [0,1]}
-\left(
-\operatorname{chord}(u;R,\theta) + Force \cdot g(u)
-\right)
-\le Force
+|\theta_k - \theta_0| \ge \theta_{target}
 $$
 
 where:
 
 $$
-\operatorname{chord}(u;R,\theta)
-= 2uR \cdot \left|\sin\left(\frac{\theta\pi}{180} \cdot \frac{w(u)}{2}\right)\right|.
+\theta_{target} = \texttt{targetTurnAngleDegrees} \cdot \frac{\pi}{180}
 $$
 
-This has an important practical consequence. The limiting radius is usually not the center of the swirl. It is typically an outer support band where all of the following are simultaneously true:
-
-- the lever arm $uR$ is large
-- the swirl envelope $w(u)$ is still near full strength
-- the surviving noise ratio $g(u)$ is already close to 1
-
-So the active constraint is often dominated by a region near the outer support boundary rather than by the interior where the user expects to see a clear vortex. The solver is therefore conservative in two separate ways:
-
-- it reserves worst-case surviving noise instead of the realized local noise vector
-- it applies that reserve exactly where the chord lever arm is strongest
-
-The visible result is that many swirls resolve to only a few degrees of total rotation, especially for larger radii. In those cases the swirl mainly attenuates local noise near the center while contributing only a weak directional turn to the final displacement field.
-
-That behavior is not a rendering bug. It is a direct consequence of the current budget algorithm.
-
-### Artistic Replacement Options
-
-The replacement should satisfy three constraints at the same time:
-
-- the final field must obey $|D(x,y)| \le Force$
-- the swirls must remain artistically legible in the final field
-- the behavior must stay continuous, with no hard allocator switch caused by a small local change inside a swirl
-
-That means the replacement should prefer smooth envelopes over abrupt local regime changes.
-
-#### Option A: Keep Force-Limited Swirls and Reduce Noise Per Swirl
-
-Keep the additive composition model:
+The length stop condition is:
 
 $$
-D(x,y)=S(x,y)+N(x,y).
+L_{walk} \ge \texttt{maxTraceLength}
 $$
 
-Keep the existing force-limited swirl construction so the swirl term alone already satisfies:
+and the implementation truncates the final segment exactly at the remaining distance budget instead of overshooting it.
+
+## 4. Current Cubic Marching Squares Implementation
+
+The shipped tracer uses a partial Cubic Marching Squares style approach.
+
+What is cubic today:
+
+- contour-edge intersections are not solved with simple linear interpolation
+- each cell edge uses a cubic Hermite interpolation built from the edge endpoint values and estimated endpoint slopes
+- the edge root is solved numerically, so the crossing position on that edge respects a cubic scalar reconstruction along the edge
+
+What is still simplified today:
+
+- once two edge crossings are known, the traced segment inside the cell is treated as a straight segment from one crossing to the next
+- branch choice is driven by incoming heading consistency, not by solving the full contour geometry of a bicubic patch over the whole cell
+- angle accumulation is computed from polyline segment directions, not from the exact tangent of a continuous within-cell contour
+
+So the current tracer is best described as:
+
+- cubic edge interpolation
+- polyline contour stepping from cell to cell
+- local tangent estimation from the scalar gradient
+
+This is already stronger than linear marching squares, but it is not yet a full strict Cubic Marching Squares solver.
+
+## 5. What "Stricter Cubic Marching Squares" Means
+
+The earlier implementation note about refining the tracer refers to tightening the contour model inside each cell, not changing the high-level isoline idea.
+
+There are four concrete improvements behind that suggestion.
+
+### 5.1 Reconstruct the Whole Cell, Not Only Its Edges
+
+Today the code reconstructs each edge cubically and then connects edge crossings with straight segments.
+
+A stricter version would reconstruct one scalar patch over the entire cell, typically a bicubic patch derived from:
+
+- the four corner values
+- first derivatives at the corners
+- optionally mixed derivatives if a fuller bicubic model is used
+
+Then the contour would be defined by the implicit equation:
 
 $$
-M_S = \max_{p \in \text{support}} |S(p)| \le Force.
+F(x, y) = c
 $$
 
-Then define the attenuated local noise term:
+inside the cell, not only at its edges.
 
-$$
-N_s(p)=g(u(p)) \cdot N_0(p)
-$$
+Why that matters:
 
-with a smooth radial envelope and $g(1)=1$, so the noise term matches the surrounding field at the outer support boundary.
+- the contour can bend inside the cell instead of remaining piecewise straight between crossings
+- the path geometry becomes smoother at coarse grid resolutions
+- the traced angle is less sensitive to cell boundaries
 
-Assign one scalar $\alpha_s \in [0,1]$ to the whole swirl support:
+### 5.2 Use the Cell Patch to Resolve Ambiguous Cases
 
-$$
-D(p)=S(p)+\alpha_s N_s(p).
-$$
+Ambiguous marching-squares cells happen when the contour could connect the crossings in more than one topologically valid way.
 
-Let
+Today the implementation picks the next branch mostly by heading agreement.
 
-$$
-M_N = \max_{p \in \text{support}} |N_s(p)|.
-$$
+A stricter cubic version would resolve ambiguity from the interpolated scalar patch itself, for example with an asymptotic-decider-style rule or another deterministic topology decision derived from the interior scalar function.
 
-Choose:
+Why that matters:
 
-$$
-\alpha_s = \operatorname{clamp}\left(\frac{Force - M_S}{M_N}, 0, 1\right)
-$$
+- saddle cells become mathematically defined by the scalar field, not only by the incoming direction heuristic
+- two traces entering the same ambiguous cell from different sides are more likely to remain globally consistent
+- loop behavior and branch continuity become easier to reason about
 
-when $M_N > 0$.
+### 5.3 March Along the Continuous Contour Inside the Cell
 
-Then:
+Today the path jumps from one edge crossing to the next crossing.
 
-$$
-|S(p)+\alpha_s N_s(p)|
-\le |S(p)| + \alpha_s |N_s(p)|
-\le M_S + \alpha_s M_N
-\le Force.
-$$
+A stricter version would advance along the actual implicit contour inside the cell using a predictor-corrector or Newton-style projection step:
 
-This preserves the idea that the final field is still swirl plus noise, but gives the swirl visual authority by reducing surviving noise across the whole support. Because $g$ is smooth and $\alpha_s$ is constant over the support, it does not introduce a new discontinuity inside the swirl.
+1. predict a small step along the tangent
+2. project that point back onto $F(x, y) = c$
+3. repeat until the contour leaves the cell
 
-#### Option B: Use a Stronger Smooth Noise-Attenuation Curve
+Why that matters:
 
-Option A can be combined with a more aggressive but still smooth radial survival curve for the noise term.
+- the within-cell path follows the curved contour rather than its straight chord
+- length accumulation becomes closer to true arc length
+- the final endpoint depends less on how many cells the contour crosses
 
-Instead of:
+### 5.4 Compute Tangents From the Same Continuous Patch
 
-$$
-g(u)=DirectionNoiseMix + (1-DirectionNoiseMix) \cdot s(u;0,1)
-$$
+Today the tangent is estimated from a finite-difference gradient of the sampled scalar field.
 
-use a curve that stays lower through more of the interior while still returning to $1$ at the boundary. For example:
+A stricter version would compute tangent and curvature directly from the same interpolated cell patch used for tracing.
 
-$$
-g_k(u)=DirectionNoiseMix + (1-DirectionNoiseMix) \cdot s(u;0,1)^k,
-\qquad k > 1.
-$$
+If the contour is defined by $F(x, y) = c$, then the tangent remains perpendicular to the gradient, but now that gradient is evaluated from the continuous patch itself rather than from a separate finite-difference estimate.
 
-This keeps the transition smooth and leaves the composition law unchanged.
+Why that matters:
 
-#### Option C: Smoothly Blend Between Swirl and Noise
+- angle accumulation matches the traced curve more closely
+- turning-angle termination is less noisy near steep or rapidly changing regions
+- continuity across cell boundaries improves because geometry and tangent come from one model
 
-If pure additivity is not required, a more art-directed alternative is to use one smooth blend weight $\beta_s(u) \in [0,1]$:
+## 6. Practical Meaning of the Refinement Proposal
 
-$$
-D(p)=\beta_s(u(p)) S(p) + (1-\beta_s(u(p))) N_s(p).
-$$
+So the suggestion to "refine the tracer itself if you want stricter Cubic Marching Squares behavior inside each cell" means:
 
-If both $|S(p)| \le Force$ and $|N_s(p)| \le Force$, then the blend is also bounded:
+- keep the same public algorithm: scalar field -> isoline trace -> endpoint offset vector
+- keep cubic contour reconstruction as the goal
+- replace the current edge-only cubic interpolation plus straight interior segments with a full cell-interior contour model
 
-$$
-|D(p)| \le \beta_s(u(p)) Force + (1-\beta_s(u(p))) Force = Force.
-$$
+In short:
 
-This is continuous when $\beta_s$ is smooth, but it is less faithful to the interpretation that the final field is literally the sum of a swirl term and a noise term.
+- current implementation: cubic edges, polyline interior
+- stricter implementation: cubic edges and cubic interior contour geometry
 
-#### Option D: Apply One Smooth Global Saturation After Composition
+The current version is simpler, deterministic, and already working. The stricter version would mainly improve geometric fidelity, smoother turning behavior, and more principled handling of ambiguous cells.
 
-Another possibility is to build the raw field
+## 7. Stop Conditions and Robustness
 
-$$
-D_{raw}(x,y)=S(x,y)+N(x,y)
-$$
+The tracer stops when any of the following happens:
 
-and then apply the same smooth magnitude compressor everywhere in the domain, not only inside swirls. In abstract form:
+- angular limit reached
+- length limit reached
+- trace exits the domain
+- gradient becomes too small to define a stable tangent
+- loop or step cap is reached
 
-$$
-D(x,y)=
-\begin{cases}
-0, & D_{raw}(x,y)=0 \\
-\sigma\left(|D_{raw}(x,y)|\right) \cdot \dfrac{D_{raw}(x,y)}{|D_{raw}(x,y)|}, & D_{raw}(x,y) \ne 0
-\end{cases}
-$$
+The current implementation also uses small numerical tolerances for:
 
-with a smooth function $\sigma(r)$ such that $\sigma(r) \le Force$ and $\sigma(r) \approx r$ well below the limit.
+- edge-root solving
+- duplicate crossing suppression
+- angle unwrapping around $\pm \pi$
+- near-boundary detection
 
-This avoids local seams because the same rule is applied globally, but it also distorts magnitudes everywhere and is the least faithful to the original additive interpretation.
+These guards are implementation details, but they are necessary to keep tracing deterministic on a finite grid.
 
-#### Option E: Keep or Redesign the Swirl Envelope
+## 8. Public Parameters
 
-The current swirl envelope is weak at the center and weak again at the outer edge:
+The current public parameter set is:
 
-$$
-w(u)=s(u;0.02,0.06) \cdot (1-s(u;0.9,1))^{SwirlFalloff}.
-$$
+- `renderWidth`
+- `renderHeight`
+- `maxTraceLength`
+- `targetTurnAngleDegrees`
+- `scale`
+- `silenceCutoffPercent`
+- `gridSparseness`
+- `showHeatmap`
+- `vectorOverlayDensity`
+- `spectralSlopeDbPerOct`
+- `randomSeed`
 
-So even after the noise budget is improved, the swirl can still read as a ring-shaped vortex rather than a center-strong vortex.
+Their intended meanings are:
 
-This is a separate artistic choice:
+- `renderWidth`, `renderHeight`: output size in SVG units
+- `maxTraceLength`: maximum walked isoline length per sample
+- `targetTurnAngleDegrees`: net turning threshold before stopping
+- `scale`: spectral cutoff radius of the scalar source field
+- `silenceCutoffPercent`: hard spectral cutoff
+- `gridSparseness`: simulation grid resolution in SVG units per cell
+- `showHeatmap`: toggle source scalar-field heatmap rendering
+- `vectorOverlayDensity`: density of arrow sampling in the preview
+- `spectralSlopeDbPerOct`: frequency rolloff of the scalar field
+- `randomSeed`: deterministic seed for reproducible generation
 
-- keep the current ring-shaped profile
-- or redesign the envelope if a center-strong vortex is preferred
+## 9. Binary Export
 
-### Recommended Practical Direction
+The binary displacement export stores:
 
-If the priority is a simple, robust, and continuous artistic solution, prefer Option A, optionally strengthened by Option B.
+- the full parameter object
+- the grid shape
+- the render size
+- interleaved `dx, dy` float32 samples in row-major order
 
-The recommended recipe is:
+The current binary format version is 3.
+Versions from the old swirl-based schema are intentionally rejected.
 
-1. keep the current force-limited swirl construction so the swirl term alone already respects $Force$
-2. keep additive composition
-3. replace only the shared swirl-noise budget solver, not the whole swirl model
-4. compute one global noise-reduction scalar per swirl support
-5. use only smooth radial envelopes where the swirl transitions back to the surrounding field
-6. if the swirl still reads too weakly, strengthen the smooth noise attenuation curve rather than introducing a local allocator switch
+## 10. Rendering
 
-This keeps the behavior easy to explain: the swirl does not need a local priority share. It wins visual authority by reducing background noise smoothly across its own support, while the force limit remains explicit and the field stays continuous.
+The SVG preview shows:
 
-4. Required parameters
+- a heatmap derived from the original filtered scalar field
+- vector arrows derived from final `dx, dy`
+- a scale bar
 
-The system must expose these core parameters:
+The old swirl-circle diagnostic overlay is no longer part of the current model.
 
-Force
-Maximum allowed displacement magnitude of the final field in world units. All generated displacement vectors must satisfy $|D(x,y)| \le Force$.
-Scale
-Shared cutoff percentage of the longest grid side for both magnitude and direction fields. Higher percentages preserve finer variation and faster directional changes; lower percentages produce broader, smoother structure.
-Fsilence
-Hard cutoff percentage of the longest grid side for both magnitude and direction fields. Frequencies above this threshold are removed completely.
-Spectral Slope
-Controls spectral rolloff in dB per octave. Lower values preserve more high-frequency detail; higher values produce smoother, broader variation.
-Amplitude Contrast
-Shapes how concentrated or uniform the strong displacement regions are. High contrast produces more localized peaks.
-Swirl Density
-Controls the approximate number of swirl centers per unit area. Internally this is implemented through non-overlapping variable-radius swirl packing.
-Swirl Minimum Angle
-Minimum allowable swirl angle in degrees. Higher values reduce the largest possible swirl radius because Force must still bound the worst-case chord length.
-Swirl Strength
-Requested swirl intensity as a percentage of the maximum angle allowed for each sampled swirl circle under Force, the current falloff, and the reserved noise budget. The resulting displacement is the chord of that local rotation, not the tangent direction.
-Swirl Falloff
-Shapes a radial angle envelope so the rotation is weak near the center, strongest in an intermediate ring, and weak again near the edge of the swirl.
-Swirl Direction Bias
-Controls the clockwise-versus-counterclockwise bias of swirl centers. Low values favor clockwise spin, high values favor counterclockwise spin.
-Direction Noise Mix
-Controls how much of the noise term survives inside swirl support. Low values strongly suppress noise near swirl centers; high values preserve more of the underlying direction-noise field.
-Random Seed
-Seed used for all stochastic generation so the result is reproducible.
+## 11. Verification Requirements
 
-5. Suggested generation logic
+The implementation should maintain these invariants:
 
-A practical implementation can be structured as follows:
+1. scalar generation is deterministic for a fixed seed and parameter set
+2. traced vectors are reproducible for a fixed scalar field
+3. `magnitude[i] = hypot(displacementX[i], displacementY[i])`
+4. `magnitude[i] <= maxTraceLength + \varepsilon`
+5. binary export and import preserve the new parameter schema and displacement payload ordering
 
-Generate a uniform random scalar field for magnitude.
-Generate a separate uniform random scalar field for direction.
-Apply FFT-based spectral filtering to each field independently.
-Use Scale, Fsilence, and Spectral Slope to define the shared spectral envelope of the magnitude and direction fields.
-Apply Amplitude Contrast to the filtered magnitude field.
-Generate non-overlapping swirl centers based on Swirl Density and a force-derived radius range.
-Use Swirl Minimum Angle together with Force to determine the largest allowed swirl radius, then sample a mix of radii within that admissible range.
-For each swirl center, solve the maximum globally admissible angle for its sampled radius by enforcing:
+## 12. Recommended Next Refinement
 
-$$
-\max_{u \in [0,1]}\left(\operatorname{chord}(u;R,\theta)+Force\cdot g(u)\right) \le Force
-$$
+If geometric fidelity becomes more important than implementation simplicity, the next tracer upgrade should be:
 
-Then apply Swirl Strength as a percentage of that solved angle and use the chord of that local rotation as the swirl displacement contribution.
-Attenuate the local noise term inside swirl support using Direction Noise Mix.
-Add the globally budgeted swirl vector and the attenuated noise vector directly.
-Convert the final result into a 2D displacement vector field.
+1. reconstruct a full bicubic scalar patch per cell
+2. resolve ambiguous cells from that patch rather than mainly from heading heuristics
+3. march along the continuous contour inside the cell
+4. derive tangent and turning angle from the same continuous patch
 
-6. UI and visualization
-
-The HTML page should include:
-
-sliders or numeric inputs for all 16 parameters,
-a width and height control for the rendered SVG output,
-a seed input,
-a 2D canvas showing the generated vector field,
-a visual preview of the displacement field, such as:
-arrows,
-a color-coded magnitude map,
-or a streamline / grid distortion preview.
-
-The interface should update interactively when a parameter changes.
-
-The application should also provide a binary export of the generated displacement field. The export must include the current configuration plus a row-major 2D displacement grid stored as interleaved `(dx, dy)` samples so a downstream processor can apply the field as `displace(p) = p + z`.
-
-7. Implementation notes
-   Use TypeScript for all logic.
-   Use a regular grid with configurable resolution.
-   Use webfft for FFT and inverse FFT operations.
-   Keep the code modular:
-   noise generation,
-   spectral filtering,
-   swirl generation,
-   field composition,
-   rendering / UI.
-8. Expected result
-
-The result should be an expressive and reproducible displacement field that can smoothly vary from gentle undulations to dense turbulent swirls, while remaining fully controllable through the 16 parameters above.
-
-In the shipped implementation, the key design choices are:
-
-- no final post-composition clamp
-- non-overlapping swirl supports
-- chord-based swirl displacement rather than tangent advection
-- longest-side frequency units for isotropic spectral control on rectangular grids
-- soft spectral corner plus hard silence cutoff
-- global per-swirl angle budgeting instead of per-pixel hot-spot reallocation
-
-Force : max length displacement
-
-For a swirl of physical radius $R$ and local rotation angle $\theta$, the chord displacement is $\Delta = 2R\sin(\theta/2)$. In the implemented model, the local angle is modulated by the radial envelope, so the effective force limit must use the real worst-case chord reachable under that envelope, not only the literal peak-angle formula.
+That is the concrete meaning of the "stricter Cubic Marching Squares" proposal.

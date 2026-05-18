@@ -14,20 +14,14 @@ void test("root package exports the supported generation and schema API", () => 
   const parameters: ParameterValues = {
     renderWidth: 320,
     renderHeight: 240,
-    force: 80,
+    maxTraceLength: 80,
+    targetTurnAngleDegrees: 180,
     scale: 4.5,
     silenceCutoffPercent: 100,
     gridSparseness: 20,
     showHeatmap: true,
     vectorOverlayDensity: 16,
     spectralSlopeDbPerOct: 6,
-    amplitudeContrast: 1,
-    swirlDensity: 18,
-    swirlMinimumAngleDegrees: 180,
-    swirlStrengthPercent: 60,
-    swirlFalloff: 2,
-    swirlDirectionBias: 0.5,
-    directionNoiseMix: 0.45,
     randomSeed: "package-surface",
   };
   const wrappedField = generateDisplacementField(parameters);

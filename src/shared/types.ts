@@ -1,20 +1,14 @@
 export interface ParameterValues {
   renderWidth: number;
   renderHeight: number;
-  force: number;
+  maxTraceLength: number;
+  targetTurnAngleDegrees: number;
   scale: number;
   silenceCutoffPercent: number;
   gridSparseness: number;
   showHeatmap: boolean;
   vectorOverlayDensity: number;
   spectralSlopeDbPerOct: number;
-  amplitudeContrast: number;
-  swirlDensity: number;
-  swirlMinimumAngleDegrees: number;
-  swirlStrengthPercent: number;
-  swirlFalloff: number;
-  swirlDirectionBias: number;
-  directionNoiseMix: number;
   randomSeed: string;
 }
 
@@ -28,23 +22,13 @@ export interface ScalarField {
   values: Float32Array;
 }
 
-export interface SwirlCenter {
-  positionX: number;
-  positionY: number;
-  radius: number;
-  strengthDegrees: number;
-  direction: -1 | 1;
-}
-
 export interface VectorField {
   grid: GridSpec;
-  amplitude: Float32Array;
   direction: Float32Array;
   displacementX: Float32Array;
   displacementY: Float32Array;
   magnitude: Float32Array;
   maximumDisplacementMagnitude: number;
-  swirls: SwirlCenter[];
 }
 
 export interface RenderOptions {
